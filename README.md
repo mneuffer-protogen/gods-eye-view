@@ -233,6 +233,15 @@ _Why cockpit mode exists: you're riding a real aircraft over real terrain — an
 
 ---
 
+## 🥽 Mixed Reality
+
+Put the live globe on your actual desk. Hit the headset button in the top toolbar, or open
+`/xr.html`. In a Quest 3 or another WebXR headset with passthrough, the globe stands on a real
+table, wrapped in live aircraft, ships, satellites and earthquakes. Pinch to spin it, use two
+hands to resize it, grab the glass rim to move it, and tap a contact for details. Without a
+headset the same page is a desktop preview. Headsets need HTTPS or `adb reverse`; see
+[docs/MIXED-REALITY.md](docs/MIXED-REALITY.md).
+
 ## 🎙️ Talk to It
 
 > Voice needs an **OpenAI key**. Without one the entire app still runs — the mic button just reports voice is unavailable. The same key drives the **AI HUD summary**: a terse, five-word intelligence-style readout of the current view that regenerates as you move.

@@ -599,6 +599,7 @@
       "src/ui/locationSearch.js",
       "src/ui/mapSource.js",
       "src/ui/mapSourceControls.js",
+      "src/ui/mixedRealityLink.js",
       "src/ui/navigationController.js",
       "src/ui/panelChrome.js",
       "src/ui/panelDisclosure.js",
@@ -1848,6 +1849,7 @@
       "src/ui/locationSearch.js",
       "src/ui/mapSource.js",
       "src/ui/mapSourceControls.js",
+      "src/ui/mixedRealityLink.js",
       "src/ui/navigationController.js",
       "src/ui/panelChrome.js",
       "src/ui/panelDisclosure.js",
@@ -2632,6 +2634,7 @@
     "exports": ["./ui/navigation"],
     "modules": [
       "src/navigationPolicy.js",
+      "src/ui/mixedRealityLink.js",
       "src/ui/navigationController.js",
       "src/app/stateChannel.js",
       "src/data/cameraArrival.js"

@@ -13,10 +13,24 @@ export const PANEL_BASE = '/panel/';
 export const PANEL_WORKER_PRELUDE_PATH = 'cesium/worker-prelude.js';
 export const PANEL_OUT_DIR = 'dist/panel';
 
+// The panel is the globe page alone: it never enters a headset, so the
+// mixed-reality page and its controller models stay out of its build.
+const PANEL_EXCLUDED_PLUGINS = new Set(['xr-profiles']);
+
 /** A browser Vite config changed to produce the panel build. */
 export function panelBuildConfig(config) {
+  // One entry: inlineDynamicImports cannot bundle several pages, and the
+  // default entry is the globe's index.html.
+  const { input: _pages, ...rollupOptions } = config.build?.rollupOptions ?? {};
   return {
     ...config,
+    ...(config.plugins
+      ? {
+          plugins: config.plugins.filter(
+            (plugin) => !PANEL_EXCLUDED_PLUGINS.has(plugin?.name),
+          ),
+        }
+      : {}),
     base: PANEL_BASE,
     build: {
       ...config.build,
@@ -25,7 +39,7 @@ export function panelBuildConfig(config) {
       modulePreload: false,
       cssCodeSplit: false,
       rollupOptions: {
-        ...config.build?.rollupOptions,
+        ...rollupOptions,
         output: { inlineDynamicImports: true },
       },
     },

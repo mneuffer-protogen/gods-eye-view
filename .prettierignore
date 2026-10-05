@@ -20,3 +20,7 @@ node_modules
 .vite
 .vite-*
 *.min.js
+
+# Vendored WebXR framework, kept byte-identical to its upstream template so
+# later fixes can be diffed in (see src/xr/framework/UPSTREAM.md).
+src/xr/framework/

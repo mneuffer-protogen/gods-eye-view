@@ -12,6 +12,7 @@ import { setSplitFlapText } from '../splitFlap.js';
 import { UiLifetime } from './uiLifetime.js';
 import { RecordingControls } from './recordingControls.js';
 import { readShellElements } from './shellElements.js';
+import { mixedRealityHref } from './mixedRealityLink.js';
 import { CockpitCoordinator } from './cockpitCoordinator.js';
 import { ContextControls } from './context.js';
 import { CctvControls } from './cctv.js';
@@ -572,6 +573,7 @@ export class StyleManager extends ShellFacade {
     this._initGlobalContextPanel();
     this._initLocationBar();
     this._initShareButton();
+    this._initMixedRealityButton();
     this._initCameraOrientationControls();
     this._initClearSelectedLayersButton();
     this._initHUDToggle();
@@ -1436,6 +1438,22 @@ export class StyleManager extends ShellFacade {
       const success = await this.shareLinkManager.copyLink();
       if (!this._disposed)
         this._showToast(success ? 'Link copied!' : 'Copy failed');
+    });
+  }
+
+  /**
+   * Wires the mixed-reality action: open xr.html facing the place the camera
+   * is over.
+   * @returns {void}
+   */
+  _initMixedRealityButton() {
+    this._lifetime.listen(this._mixedRealityBtn, 'click', () => {
+      globalThis.location.assign(
+        mixedRealityHref(
+          this.viewer?.camera?.positionCartographic,
+          globalThis.location.href,
+        ),
+      );
     });
   }
 

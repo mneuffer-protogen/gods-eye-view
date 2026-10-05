@@ -13,6 +13,16 @@
   largest cities) and `CCTV_VEGVESEN_VIDEO=0` keeps stills only. Attributed
   under NLOD 2.0.
 
+- Mixed reality: `xr.html` shows the live globe as a tabletop hologram in a
+  WebXR headset, with passthrough where the browser offers it, VR otherwise
+  and a desktop preview without a headset. Aircraft, military aircraft,
+  vessels, satellites and earthquakes come from the same sources as the
+  layers. Turn the globe with a pinch, resize it with two hands, carry it by
+  its rim, set it on a real table, and tap a contact for details. The headset
+  button in the top toolbar opens it facing the place the camera is over. The
+  page never loads Cesium; `GEV_TLS_CERT`/`GEV_TLS_KEY` serve HTTPS for a
+  headset on Wi-Fi. See docs/MIXED-REALITY.md.
+
 ## [0.2.1] — 2026-10-02 — God's Eye View through Your Agent (with security fixes and other features)
 
 - Ship each bundled data pack once. The region, marine, admin-boundary,
