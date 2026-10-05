@@ -12,6 +12,14 @@ import {
   readsbIdentities,
 } from './aircraft.js';
 import { normalizeVesselTrack, vesselSnapshot } from './vessels.js';
+import {
+  OPENWATERS_ANON_MAX_AREA_SQ_DEG,
+  OPENWATERS_DEFAULT_AREA,
+  OPENWATERS_VESSELS_URL,
+  bboxForArea,
+  formatOpenWatersBbox,
+  normalizeOpenWatersCollection,
+} from '../../data/openWatersAis.js';
 
 const defaultFetch = (...args) => globalThis.fetch(...args);
 const header = (response, name) => response.headers?.get?.(name);
@@ -180,6 +188,47 @@ export function createMilitarySource({
   };
 }
 
+// Fixes older than this are dropped, as the server's AIS caches do.
+const VESSEL_MAX_AGE_MS = 30 * 60 * 1000;
+
+/**
+ * Open Waters AIS straight from the browser: it allows any origin, so when
+ * the app's server cannot serve vessels (a static deployment) the visitor's
+ * own address asks for the box around the view.
+ */
+async function directVesselSnapshot(fetchImpl, { maxRows, area }, signal) {
+  const usable =
+    Number.isFinite(area?.lat) &&
+    Number.isFinite(area?.lon) &&
+    Number.isFinite(area?.radiusKm);
+  const bbox = formatOpenWatersBbox(
+    bboxForArea(
+      usable ? area : OPENWATERS_DEFAULT_AREA,
+      OPENWATERS_ANON_MAX_AREA_SQ_DEG,
+    ),
+  );
+  const response = await fetchImpl(
+    `${OPENWATERS_VESSELS_URL}?bbox=${encodeURIComponent(bbox)}`,
+    { signal, headers: { Accept: 'application/geo+json, application/json' } },
+  );
+  if (!response.ok) throw httpError(response, 'Vessels');
+  const rows = normalizeOpenWatersCollection(await response.json(), {
+    maxAgeMs: VESSEL_MAX_AGE_MS,
+  }).slice(0, maxRows);
+  signal?.throwIfAborted();
+  return {
+    ...vesselSnapshot(
+      {
+        rows,
+        status: 'live',
+        newestPositionAt: rows[0]?.last_position_UTC ?? null,
+      },
+      { source: 'Open Waters AIS', coverage: `view window ${bbox}` },
+    ),
+    status: 200,
+  };
+}
+
 export function createVesselSource({
   fetchImpl = defaultFetch,
   apiUrl = '/api/vessels',
@@ -187,7 +236,27 @@ export function createVesselSource({
 } = {}) {
   return {
     label: 'Vessels',
-    async getSnapshot({ maxRows = 12000, area } = {}, { signal } = {}) {
+    async getSnapshot(query = {}, options = {}) {
+      try {
+        return await this.getServerSnapshot(query, options);
+      } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        // A configured key that was rejected is the operator's to fix, not
+        // something to paper over with another feed.
+        if (/API key/.test(error?.message || '')) throw error;
+        try {
+          return await directVesselSnapshot(
+            fetchImpl,
+            { maxRows: query.maxRows ?? 12000, area: query.area },
+            options.signal,
+          );
+        } catch (directError) {
+          if (directError?.name === 'AbortError') throw directError;
+          throw error;
+        }
+      }
+    },
+    async getServerSnapshot({ maxRows = 12000, area } = {}, { signal } = {}) {
       const url = new URL(apiUrl, origin());
       url.searchParams.set('maxRows', String(maxRows));
       // An area asks for the vessels around a point; servers that hold every

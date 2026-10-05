@@ -51,3 +51,27 @@ test('launch factories construct independently without starting a scene or sourc
   assert.equal(first.getStats().count, 0);
   assert.equal(second.getStats().count, 0);
 });
+
+test('launches fall back to Launch Library directly when the server cannot serve them', async () => {
+  const asked = [];
+  const source = createLaunchSource({
+    now: () => new Date('2026-10-05T00:00:00Z'),
+    fetchImpl: async (url) => {
+      asked.push(String(url));
+      if (String(url) === '/api/launches')
+        return new Response(
+          JSON.stringify({ error: 'Not available on this deployment' }),
+          { status: 503 },
+        );
+      return new Response(JSON.stringify({ results: [{ id: 'launch' }] }));
+    },
+  });
+  const snapshot = await source.getLaunchSnapshot();
+  assert.deepEqual(snapshot.payload.results, [{ id: 'launch' }]);
+  assert.equal(snapshot.stale, false);
+  assert.equal(asked[0], '/api/launches');
+  assert.match(
+    asked[1],
+    /^https:\/\/ll\.thespacedevs\.com\/2\.3\.0\/launches\/\?/,
+  );
+});

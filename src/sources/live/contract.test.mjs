@@ -313,3 +313,54 @@ test('identity lookup validates its response and honors body-parse cancellation'
     name: 'AbortError',
   });
 });
+
+test('vessels fall back to Open Waters from the browser when the server cannot serve them', async () => {
+  const asked = [];
+  const seen = new Date(Date.now() - 60_000).toISOString();
+  const source = createVesselSource({
+    origin: () => 'https://site.pages.dev',
+    fetchImpl: async (url) => {
+      asked.push(String(url));
+      if (String(url).startsWith('https://site.pages.dev/api/vessels'))
+        return new Response('<!doctype html>', { status: 200 });
+      return Response.json({
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [1.2, 50.9] },
+            properties: {
+              mmsi: 232001234,
+              kind: 'vessel',
+              name: 'CHANNEL',
+              seen,
+            },
+          },
+        ],
+      });
+    },
+  });
+  const snapshot = await source.getSnapshot({
+    maxRows: 10,
+    area: { lat: 50.9, lon: 1.2, radiusKm: 40 },
+  });
+  assert.equal(snapshot.source, 'Open Waters AIS');
+  assert.deepEqual(
+    snapshot.records.map((record) => record.id),
+    ['232001234'],
+  );
+  assert.match(asked[1], /^https:\/\/ais\.openwaters\.io\/v1\/vessels\?bbox=/);
+});
+
+test('a deployment that cannot serve a feed names the reason', async () => {
+  const source = createFlightSource({
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ error: 'x' }), {
+        status: 503,
+        headers: { 'X-GEV-Unavailable': 'Not available on this deployment' },
+      }),
+  });
+  await assert.rejects(source.getSnapshot(), {
+    message: 'Not available on this deployment',
+  });
+});
