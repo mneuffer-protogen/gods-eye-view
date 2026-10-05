@@ -2,9 +2,10 @@ import { createSurfaceKeyboard } from './ui/surfaceKeyboard.js';
 
 // First-run mission launcher.
 //
-// The map deliberately does not auto-enable live feeds on every visit: doing so
-// would spend optional API quotas, surprise returning operators, and fight share
-// links. A new visitor instead gets one compact, explicit choice after startup.
+// A visit with nothing saved and nothing shared starts with the keyless live
+// feeds on (FRESH_VISIT_LAYER_IDS in src/data/layerState.js): none spends a
+// quota, a returning operator's saved choice wins, and share links are left
+// alone. The launcher then offers one compact, explicit next step.
 //
 // SHOW POLICY (owner ruling, 2026-08-23). The launcher is NOT one-shot. A new
 // operator needs the map explained more than once, so it returns every fresh

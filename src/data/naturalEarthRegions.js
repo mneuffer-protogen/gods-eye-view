@@ -121,12 +121,16 @@ function suffixVariants(norm) {
 /** @type {Array|null} flat entry list for listRegions() */
 let _entries = null;
 
+// Resolved when first loaded, not at import: a bundled edge function has no
+// module URL to resolve against, and must still be able to import this file.
 const PACKS = {
   regions: {
-    url: new URL('./local_data/natural_earth/regions.json', import.meta.url),
+    url: () =>
+      new URL('./local_data/natural_earth/regions.json', import.meta.url),
   },
   marine: {
-    url: new URL('./local_data/natural_earth/marine.json', import.meta.url),
+    url: () =>
+      new URL('./local_data/natural_earth/marine.json', import.meta.url),
   },
 };
 
@@ -170,8 +174,8 @@ function buildEntries(pack, kind) {
  */
 const loadIndex = createRetryableLoader(async () => {
   const [regions, marine] = await Promise.all([
-    loadBundledJson(PACKS.regions.url),
-    loadBundledJson(PACKS.marine.url),
+    loadBundledJson(PACKS.regions.url()),
+    loadBundledJson(PACKS.marine.url()),
   ]);
   _entries = [
     ...buildEntries(regions, 'natural'),

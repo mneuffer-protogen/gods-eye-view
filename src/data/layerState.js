@@ -30,6 +30,24 @@ const TRACKING_ID_GRAMMAR = /^[0-9a-z~_-]{1,16}$/;
 const MAX_ENABLED_LAYERS_CHARS = 4_096;
 const MAX_LAYER_OPTIONS_CHARS = 512;
 export const LAYER_STATE_STORAGE_KEY = 'gev:layer-state:v2';
+/**
+ * Layers on for a visit with nothing saved and nothing shared: live traffic
+ * in the air, at sea and in orbit, plus earthquakes and launches. All keyless.
+ * A saved choice (even everything off) or a share link always wins.
+ */
+export const FRESH_VISIT_LAYER_IDS = Object.freeze([
+  'flights',
+  'military',
+  'ais-live-vessels',
+  'satellites',
+  'earthquakes',
+  'rocket-launches',
+]);
+/**
+ * Set once the fresh-visit layers have been offered to a browser that saved
+ * its layers before they existed, so they are merged in one time only.
+ */
+export const FRESH_VISIT_STORAGE_KEY = 'gev:fresh-visit-layers:v1';
 export const LAYER_RESTORE_ORIGINS = Object.freeze({
   share: 'share-restore',
   local: 'local-restore',

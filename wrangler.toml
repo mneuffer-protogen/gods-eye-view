@@ -1,0 +1,8 @@
+# Cloudflare Pages: the built site is static (dist/), and functions/api serves
+# the live layers' data through the same provider middleware the dev server
+# runs (server/edge/). The providers use Node built-ins, hence nodejs_compat;
+# the compatibility date enables node:fs and the node:http client modules.
+name = "gods-eye-vr"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-09-15"
+compatibility_flags = ["nodejs_compat"]
