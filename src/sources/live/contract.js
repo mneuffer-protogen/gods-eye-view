@@ -113,9 +113,15 @@ export function httpError(response, source) {
       : status === 401 || status === 403
         ? 'denied'
         : 'unavailable';
+  // A deployment that cannot serve a feed says so; show its words.
+  const unavailable = response.headers?.get?.('x-gev-unavailable');
   return new LiveSourceError(
     code,
-    status === 429 ? `${source} rate limited` : `${source} HTTP ${status}`,
+    unavailable
+      ? String(unavailable).slice(0, 80)
+      : status === 429
+        ? `${source} rate limited`
+        : `${source} HTTP ${status}`,
     {
       status,
       source,

@@ -9,17 +9,19 @@
  *  - OpenAI and Google Places, whose cost endpoints refuse proxied requests;
  *    keyless, they answer "not configured" here instead
  *
+ * Some upstreams refuse requests from Cloudflare's shared egress addresses
+ * (checked from a deployed function: OpenSky times out, adsb.lol answers
+ * 429, adsb.fi 403, CelesTrak times out, Launch Library throttles). Their
+ * routes answer at once that this deployment cannot serve them, rather than
+ * timing out; launches and vessels then fall back to the browser, which
+ * calls those services directly from the visitor's own address.
+ *
  * Everything listed is keyless by default; a key set in the deployment's
  * environment upgrades it exactly as on the dev server.
  */
 
-import { openSkyProxy } from '../providers/aircraft/opensky.js';
-import { adsbLolProxy } from '../providers/aircraft/adsb-lol.js';
 import { adsbdbProxy } from '../providers/aircraft/enrichment.js';
-import { trackBackfillProxies } from '../providers/aircraft/tracks.js';
 import { aisLiveProxy } from '../providers/vessels/ais-live.js';
-import { celestrakProxy } from '../providers/space/celestrak.js';
-import { rocketLaunchesProxy } from '../providers/space/launch-library.js';
 import { tomtomProxy } from '../providers/traffic.js';
 import { firmsProxy } from '../providers/firms.js';
 import { terrainHeightsProxy } from '../providers/terrain.js';
@@ -37,15 +39,19 @@ import { firePerimetersProxy } from '../providers/firePerimeters.js';
 import { apiNotFoundPlugin } from '../standalone/api-not-found.js';
 import { keylessHudSummaryResponse } from '../../src/hudSummaryResponse.js';
 
+/** Why a blocked route is unavailable; the client shows it as the reason. */
+export const EDGE_UNAVAILABLE = 'Not available on this deployment';
+
 /** A plugin answering fixed JSON at `route`. */
 function staticJson(name, routes) {
   const install = (server) => {
     for (const [route, respond] of routes)
       server.middlewares.use(route, (req, res) => {
-        const { statusCode, payload } = respond(req);
+        const { statusCode, payload, headers = {} } = respond(req);
         res.writeHead(statusCode, {
           'Content-Type': 'application/json; charset=utf-8',
           'Cache-Control': 'no-store',
+          ...headers,
         });
         res.end(JSON.stringify(payload));
       });
@@ -99,14 +105,28 @@ function keylessEdgeAnswers() {
   ]);
 }
 
+/** Routes whose upstreams refuse Cloudflare's addresses: a fast, named 503. */
+function blockedUpstreamAnswers() {
+  const unavailable = () => ({
+    statusCode: 503,
+    payload: { error: EDGE_UNAVAILABLE, status: 'unsupported' },
+    headers: { 'X-GEV-Unavailable': EDGE_UNAVAILABLE },
+  });
+  return staticJson('edge-blocked-upstreams', [
+    // Mounts match by prefix, so these cover /track too.
+    ['/api/flights', unavailable],
+    ['/api/military', unavailable],
+    ['/api/celestrak', unavailable],
+    ['/api/launches', unavailable],
+  ]);
+}
+
 /** The edge's plugins, in the dev server's order, ending with a JSON 404. */
 export function edgeProviderPlugins() {
   return [
-    openSkyProxy(),
-    celestrakProxy(),
+    blockedUpstreamAnswers(),
     tomtomProxy(),
     firmsProxy(),
-    rocketLaunchesProxy(),
     terrainHeightsProxy(),
     adsbdbProxy(),
     overpassProxy(),
@@ -117,9 +137,7 @@ export function edgeProviderPlugins() {
     radioBrowserProxy(),
     gbfsProxy(),
     transitProxy(),
-    adsbLolProxy(),
     aisLiveProxy(),
-    trackBackfillProxies(),
     weatherProxy(),
     cycloneProxy(),
     firePerimetersProxy(),

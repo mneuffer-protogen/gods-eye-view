@@ -111,6 +111,19 @@ test('the edge serves the keyless answers and a JSON 404 for unknown routes', as
   const stack = collectMiddleware(edgeProviderPlugins());
   const status = await runMiddleware(stack, request('/api/realtime/status'));
   assert.deepEqual(await status.json(), { configured: false });
+  // Upstreams that refuse Cloudflare's addresses answer at once, by name.
+  for (const path of [
+    '/api/flights?lat=1&lon=2',
+    '/api/military/track?hex=a',
+    '/api/launches',
+  ]) {
+    const blocked = await runMiddleware(stack, request(path));
+    assert.equal(blocked.status, 503, path);
+    assert.equal(
+      blocked.headers.get('x-gev-unavailable'),
+      'Not available on this deployment',
+    );
+  }
   const unknown = await runMiddleware(stack, request('/api/not-a-route'));
   assert.equal(unknown.status, 404);
   assert.equal(unknown.headers.get('content-type'), 'application/json');
