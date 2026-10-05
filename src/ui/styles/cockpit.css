@@ -1952,7 +1952,8 @@ body.cockpit-mode
     #share-btn,
     #tilt-map-view,
     #north-up-view,
-    #reset-globe-view
+    #reset-globe-view,
+    #open-mixed-reality
   ) {
   display: none !important;
 }

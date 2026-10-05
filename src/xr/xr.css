@@ -1,0 +1,251 @@
+/* God's Eye View · Mixed Reality page. The palette and type follow
+   src/ui/styles/foundation.css; the page is a frame around the 3D preview. */
+
+:root {
+  --bg-dark: #0a0a0f;
+  --glass-bg: rgba(12, 12, 20, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --accent: #00d4ff;
+  --accent-dim: rgba(0, 212, 255, 0.15);
+  --text-primary: #e8eaed;
+  --text-secondary: rgba(232, 234, 237, 0.62);
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden;
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  font: 14px/1.5 var(--font-sans);
+}
+
+:where(button, a[href], summary):focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+#viewport {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  display: block;
+}
+
+.xr-header,
+.xr-side,
+.xr-footer,
+#toast {
+  position: fixed;
+  z-index: 1;
+}
+
+.xr-header {
+  inset: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 18px 26px;
+  background: linear-gradient(180deg, rgba(10, 10, 15, 0.92), transparent);
+}
+
+.xr-back {
+  color: var(--text-secondary);
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.xr-back::before {
+  content: '← ';
+}
+.xr-back:hover {
+  color: var(--text-primary);
+}
+
+.xr-heading {
+  flex: 1;
+  min-width: 0;
+}
+.xr-eyebrow {
+  color: var(--accent);
+  font: 600 10px/1.4 var(--font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.xr-heading h1 {
+  font: 500 20px/1.2 var(--font-sans);
+  letter-spacing: -0.01em;
+}
+
+#enter-xr {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #04121a;
+  border-radius: 10px;
+  padding: 11px 20px;
+  font: 700 12px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+#enter-xr:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 24px rgba(0, 212, 255, 0.4);
+}
+#enter-xr:disabled {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--glass-border);
+  cursor: default;
+}
+
+.xr-side {
+  top: 92px;
+  right: 22px;
+  bottom: 54px;
+  width: min(320px, calc(100vw - 44px));
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 18px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  backdrop-filter: blur(18px);
+}
+.xr-side h2 {
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font: 600 10px/1.4 var(--font-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.xr-support {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-dim);
+  font-size: 13px;
+}
+.xr-feeds,
+.xr-help {
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.xr-feeds li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.xr-feeds b {
+  font-weight: 500;
+}
+.xr-feeds span {
+  color: var(--text-secondary);
+  font: 12px/1.5 var(--font-mono);
+  text-align: right;
+}
+.xr-help li {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.xr-help b {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.xr-panel-controls summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font: 600 10px/1.4 var(--font-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.xr-panel-controls[open] summary {
+  margin-bottom: 10px;
+}
+.xr-panel-controls button {
+  margin: 0 6px 6px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font: 12px/1.3 var(--font-sans);
+  cursor: pointer;
+}
+.xr-panel-controls button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.xr-credits {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.xr-footer {
+  left: 26px;
+  bottom: 18px;
+  color: var(--text-secondary);
+  font: 11px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+#toast {
+  left: 50%;
+  bottom: 52px;
+  max-width: min(560px, calc(100vw - 40px));
+  transform: translate(-50%, 12px);
+  padding: 10px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(18px);
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+#toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (max-width: 720px) {
+  .xr-side {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: 44px;
+    width: auto;
+    max-height: 42vh;
+  }
+  .xr-heading h1 {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #enter-xr,
+  #toast {
+    transition: none;
+  }
+}

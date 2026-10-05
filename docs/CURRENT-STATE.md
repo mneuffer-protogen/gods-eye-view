@@ -1,5 +1,17 @@
 # God's Eye View Current State
 
+## Mixed reality — October 5, 2026
+
+`xr.html` is a second page: the live globe as a three.js tabletop hologram for
+WebXR headsets, in passthrough (`immersive-ar`), in VR, or as a desktop
+preview. It reads the flights, military, vessel, satellite and earthquake
+feeds through their Cesium-free sources, and its session, hands, controllers,
+rays and panels come from the vendored framework in `src/xr/framework/`. The
+production build keeps Cesium's injected tags off the page, and the panel
+build drops it. The toolbar's headset button (`#open-mixed-reality`) opens it
+facing the camera's position. Headset behaviour awaits device verification.
+See [mixed reality](MIXED-REALITY.md).
+
 ## God's Eye View in conversations — October 2, 2026
 
 Tool answers that can be shown in God's Eye View include a view: camera, layers,

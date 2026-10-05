@@ -46,6 +46,30 @@ export const BROWSER_HEADERS = Object.freeze({
   'X-Content-Type-Options': 'nosniff',
 });
 
+/** The page file name (`xr.html`) of a transformIndexHtml context. */
+function pageName(context) {
+  const path = String(context?.path || context?.filename || '');
+  return path.split(/[\\/]/).pop().split('?')[0];
+}
+
+/**
+ * vite-plugin-cesium adds Cesium's script and widget stylesheet to every HTML
+ * page. A page that never runs the globe (the mixed-reality page) is left
+ * alone, so a headset does not download Cesium to draw a three.js scene.
+ */
+export function withoutCesiumOnPages(plugin, pages = []) {
+  const transform = plugin.transformIndexHtml;
+  if (!pages.length || typeof transform !== 'function') return plugin;
+  const skipped = new Set(pages);
+  return {
+    ...plugin,
+    transformIndexHtml(html, context) {
+      if (skipped.has(pageName(context))) return html;
+      return transform.call(this, html, context);
+    },
+  };
+}
+
 /** Build browser assets with explicit inputs; never load environment or providers. */
 export function createBrowserViteConfig({
   plugins = [],
@@ -55,13 +79,18 @@ export function createBrowserViteConfig({
   host = 'localhost',
   port = 4173,
   allowedHosts = DEFAULT_ALLOWED_HOSTS,
+  // HTML page names that must not receive Cesium's injected tags.
+  cesiumFreePages = [],
+  // `{ key, cert }` contents to serve HTTPS: a headset only enters WebXR
+  // from a secure context, and a LAN address is not one over plain HTTP.
+  https,
   command,
 } = {}) {
   return {
     plugins: [
       // First, so no provider route answers a Host the server does not allow.
       hostCheckPlugin(),
-      cesium(),
+      withoutCesiumOnPages(cesium(), cesiumFreePages),
       applicationHtmlPlugin(),
       ...plugins,
       embedFramingPlugin(),
@@ -97,10 +126,11 @@ export function createBrowserViteConfig({
       // Embed-mode documents are framable instead: embed-framing.js rewrites
       // only the frame-ancestors directive and keeps the rest of the policy.
       headers: BROWSER_HEADERS,
+      ...(https ? { https } : {}),
     },
     // The preview server serves the same documents, so it carries the same
     // framing + CSP hardening (one constant, no drift).
-    preview: { headers: BROWSER_HEADERS },
+    preview: { headers: BROWSER_HEADERS, ...(https ? { https } : {}) },
     define: {
       'import.meta.env.GOOGLE_MAPS_API_KEY': JSON.stringify(googleApiKey),
       'import.meta.env.CESIUM_ION_TOKEN': JSON.stringify(cesiumToken),

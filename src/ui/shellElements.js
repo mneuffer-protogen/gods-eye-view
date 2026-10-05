@@ -169,6 +169,7 @@ export function readShellElements(document = globalThis.document) {
     _globalLoadingLabel: document.getElementById('global-loading-label'),
     _globalLoadingDetail: document.getElementById('global-loading-detail'),
     _resetGlobeBtn: document.getElementById('reset-globe-view'),
+    _mixedRealityBtn: document.getElementById('open-mixed-reality'),
     _cockpitResetGlobeBtn: document.getElementById('cockpit-reset-globe'),
     _styleButtons: document.getElementById('style-buttons'),
     _trafficSyncChip: document.getElementById('traffic-sync-chip'),

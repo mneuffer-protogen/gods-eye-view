@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0a0f" />
+    <title>God's Eye View · Mixed Reality</title>
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/xr/xr.css" />
+  </head>
+  <body>
+    <canvas id="viewport" aria-label="Tabletop globe preview"></canvas>
+    <header class="xr-header">
+      <a class="xr-back" href="./">God's Eye View</a>
+      <div class="xr-heading">
+        <p class="xr-eyebrow">Mixed reality</p>
+        <h1>The live globe, on your table</h1>
+      </div>
+      <button id="enter-xr" type="button" disabled>Checking headset…</button>
+    </header>
+    <aside class="xr-side" aria-label="Globe controls">
+      <p id="xr-support" class="xr-support">Checking for a WebXR headset…</p>
+      <section>
+        <h2>Live feeds</h2>
+        <ul id="xr-feeds" class="xr-feeds"></ul>
+      </section>
+      <details class="xr-panel-controls">
+        <summary>In-scene panels</summary>
+        <div id="xr-panels"></div>
+      </details>
+      <section>
+        <h2>In the headset</h2>
+        <ul class="xr-help">
+          <li>
+            <b>Turn</b> pinch or grip the globe and move your hand; let go
+            mid-swing to spin it.
+          </li>
+          <li>
+            <b>Resize</b> hold the globe with both hands and pull apart or
+            together.
+          </li>
+          <li>
+            <b>Move</b> pinch the glass rim of the base; two hands on the rim
+            turn it.
+          </li>
+          <li>
+            <b>Inspect</b> tap a contact with a quick pinch, or aim and tap from
+            a distance.
+          </li>
+          <li>
+            <b>Place</b> in passthrough, look at a table and pinch to set the
+            globe on it.
+          </li>
+        </ul>
+      </section>
+      <p class="xr-credits">
+        Imagery: <span id="xr-imagery-credit">loading…</span><br />
+        Data: OpenSky Network, adsb.lol, AISStream, CelesTrak, USGS
+      </p>
+    </aside>
+    <footer class="xr-footer">
+      Preview: drag to orbit · scroll to zoom · click a contact
+    </footer>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/src/xr/main.js"></script>
+  </body>
+</html>

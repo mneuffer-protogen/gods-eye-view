@@ -32,7 +32,8 @@ body.scene-playback-mode
     #clear-selected-layers,
     #tilt-map-view,
     #north-up-view,
-    #reset-globe-view
+    #reset-globe-view,
+    #open-mixed-reality
   ) {
   display: none !important;
 }

@@ -896,5 +896,14 @@
   "src/tools/views.test.mjs",
   "src/app/embed.test.mjs",
   "src/tools/globePanel.test.mjs",
-  "src/costEndpointThrottle.test.mjs"
+  "src/costEndpointThrottle.test.mjs",
+  "xr.html",
+  "src/xr/xr.css",
+  "src/xr/contacts.test.mjs",
+  "src/xr/feeds.test.mjs",
+  "src/xr/geo.test.mjs",
+  "src/xr/manipulation.test.mjs",
+  "src/xr/panelContent.test.mjs",
+  "src/tooling/xrPage.test.mjs",
+  "src/ui/mixedRealityLink.test.mjs"
 ]

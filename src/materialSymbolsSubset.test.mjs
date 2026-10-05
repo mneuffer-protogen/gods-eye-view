@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const SRC_ROOT = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = path.resolve(SRC_ROOT, '..');
 const INDEX_HTML = path.join(REPO_ROOT, 'index.html');
+const XR_ROOT = path.join(SRC_ROOT, 'xr');
 
 /** The glyph written as element text: `<span class="material-symbols-outlined">radar</span>`. */
 const SPAN_TEXT =
@@ -26,6 +27,8 @@ function sourceFiles(directory = SRC_ROOT) {
   const files = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const absolute = path.join(directory, entry.name);
+    // The mixed-reality page (xr.html, src/xr) never loads the icon font.
+    if (entry.isDirectory() && absolute === XR_ROOT) continue;
     if (entry.isDirectory()) files.push(...sourceFiles(absolute));
     else if (
       entry.isFile() &&
