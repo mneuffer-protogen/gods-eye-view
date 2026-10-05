@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createAisStreamAdapter } from '../../../src/data/aisStreamAdapter.js';
 import { parseSilenceTimeoutEnv } from '../../../src/data/aisWatchdog.js';
-import { clampInt } from '../common/query.js';
+import { clampInt, requiredFiniteQueryNumber } from '../common/query.js';
 import {
   AISSTREAM_CACHE_MAX,
   AISSTREAM_STALE_MS,
@@ -10,7 +10,9 @@ import {
   readAisTrack,
   aisStreamRows,
   newestAisPositionAt,
+  rememberAisTrackRows,
 } from './ais-store.js';
+import { OPENWATERS_SOURCE, fetchOpenWatersSnapshot } from './open-waters.js';
 // ---------------------------------------------------------------------------
 // AISStream live vessel cache state
 // ---------------------------------------------------------------------------
@@ -63,18 +65,24 @@ let _aisNeedsRearm = false;
 let _aisWebSocketImpl;
 
 /**
- * Vite plugin: AISStream live vessel cache.
+ * Vite plugin: live vessel snapshot.
  *
- * AISStream does not support browser CORS and requires a private API key, so
- * the Vite server keeps one backend websocket open and exposes a same-origin
- * JSON snapshot to the Cesium layer.
+ * With AISSTREAM_API_KEY, the Vite server keeps one backend AISStream
+ * websocket open (AISStream has no browser CORS and its key is private) and
+ * exposes a same-origin JSON snapshot to the Cesium layer. Without it, the
+ * same route serves a keyless Open Waters snapshot of the box around the
+ * client's view, so the layer works with no signup.
  */
 export function aisLiveProxy() {
   function install(middlewares) {
     middlewares.use('/api/vessels', async (req, res) => {
       try {
-        res.setHeader('X-Feed-Source', 'AISStream');
-        ensureAisStreamConnection();
+        const keyless = !process.env.AISSTREAM_API_KEY;
+        res.setHeader(
+          'X-Feed-Source',
+          keyless ? OPENWATERS_SOURCE : 'AISStream',
+        );
+        if (!keyless) ensureAisStreamConnection();
         const incoming = new URL(req.url || '', 'http://localhost');
 
         // Track sub-route MUST be handled before the rows snapshot — this
@@ -101,7 +109,7 @@ export function aisLiveProxy() {
             JSON.stringify({
               mmsi,
               samples: readAisTrack(mmsi),
-              source: 'AISStream (accumulated since server start)',
+              source: `${keyless ? OPENWATERS_SOURCE : 'AISStream'} (accumulated since server start)`,
               retainedSec: Math.floor(AISSTREAM_STALE_MS / 1000),
             }),
           );
@@ -114,11 +122,15 @@ export function aisLiveProxy() {
           AISSTREAM_CACHE_MAX,
           AISSTREAM_CACHE_MAX,
         );
+        if (keyless) {
+          await serveOpenWatersSnapshot(incoming, res, maxRows);
+          return;
+        }
         const rows = aisStreamRows(maxRows);
 
         const feed = aisStreamStatusSnapshot();
 
-        res.statusCode = process.env.AISSTREAM_API_KEY ? 200 : 503;
+        res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store');
         res.end(
@@ -173,6 +185,59 @@ export function aisLiveProxy() {
       disposeAisStream();
     },
   };
+}
+
+/** The client's view area from `lat`/`lon`/`radius_km`, or null. */
+function requestedArea(searchParams) {
+  const lat = requiredFiniteQueryNumber(searchParams, 'lat');
+  const lon = requiredFiniteQueryNumber(searchParams, 'lon');
+  const radiusKm = requiredFiniteQueryNumber(searchParams, 'radius_km');
+  if (lat === null || lon === null || radiusKm === null) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180 || radiusKm <= 0) return null;
+  return { lat, lon, radiusKm };
+}
+
+/**
+ * Answer /api/vessels from Open Waters. The payload matches the AISStream
+ * branch, with `coverage` naming the box actually served: keyless reads are
+ * a view window, not the world, and the layer should say so.
+ */
+async function serveOpenWatersSnapshot(incoming, res, maxRows) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  let snapshot;
+  try {
+    snapshot = await fetchOpenWatersSnapshot(
+      requestedArea(incoming.searchParams),
+    );
+  } catch {
+    res.statusCode = 503;
+    res.end(
+      JSON.stringify({
+        rows: [],
+        source: OPENWATERS_SOURCE,
+        status: 'error',
+        error: 'Keyless AIS snapshot unavailable',
+      }),
+    );
+    return;
+  }
+  const rows = snapshot.rows.slice(0, maxRows);
+  rememberAisTrackRows(rows);
+  res.statusCode = 200;
+  res.end(
+    JSON.stringify({
+      rows,
+      source: OPENWATERS_SOURCE,
+      status: 'live',
+      error: null,
+      refreshing: snapshot.cacheStatus === 'STALE',
+      newestPositionAt: newestAisPositionAt(rows),
+      lastMessageAt: new Date(snapshot.cachedAt).toISOString(),
+      coverage: `view window ${snapshot.bbox}`,
+      attribution: snapshot.attribution,
+    }),
+  );
 }
 
 /**

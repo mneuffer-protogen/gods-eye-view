@@ -1,5 +1,29 @@
 import { DEFAULT_VOICE_TIER, resolveVoiceModel } from './voiceCost.js';
 
+/**
+ * Whether the app's server can start voice: true or false from its status
+ * route, or null when it does not say (an older or different server), in
+ * which case callers keep the mic as it was.
+ */
+export async function probeRealtimeAvailability({
+  statusEndpoint = '/api/realtime/status',
+  transport = (...args) => fetch(...args),
+  signal,
+} = {}) {
+  try {
+    const response = await transport(statusEndpoint, {
+      signal,
+      cache: 'no-store',
+      redirect: 'error',
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data?.configured === 'boolean' ? data.configured : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Realtime-compatible token and SDP requests, independent of microphone/UI ownership. */
 export function createRealtimeBackend({
   tokenEndpoint = '/api/realtime/token',

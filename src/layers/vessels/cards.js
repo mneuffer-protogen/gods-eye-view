@@ -2,6 +2,7 @@ import {
   accentForVesselType,
   normalizeVesselType,
 } from '../../data/vesselLabels.js';
+import { flagStateFromMmsi, flagStateLabel } from '../../data/aisIdentity.js';
 
 export function createCards({
   vesselState,
@@ -18,11 +19,13 @@ export function createCards({
 
     // Pinned vessels missing from recent refreshes get a stale marker
     const stale = (record.missedRefreshes || 0) > 0;
+    // Flag state comes from the MMSI's MID, so it reads the same for any feed.
+    const flag = flagStateFromMmsi(record.mmsi);
     el.classList.add('active');
     el.textContent = [
       `AIS: ${trimHudValue(record.name, 32)}`,
       `${trimHudValue(record.type || 'VESSEL', 24)}  SPD: ${formatSpeed(record.speed)}  HDG: ${formatHeading(record.heading ?? record.course)}`,
-      `MMSI: ${record.mmsi || '--'}  ${formatPositionTime(record)}${stale ? '  · STALE' : ''}`,
+      `MMSI: ${record.mmsi || '--'}${flag ? `  FLAG: ${flag.countryCode || flag.country}` : ''}  ${formatPositionTime(record)}${stale ? '  · STALE' : ''}`,
     ].join('\n');
   }
 
@@ -92,6 +95,8 @@ export function createCards({
     ];
     const destination = String(record.destination || '').trim();
     if (destination) details.push(`→ ${trimHudValue(destination, 24)}`);
+    const flag = flagStateLabel(record.mmsi);
+    if (flag) details.push(`FLAG ${trimHudValue(flag, 28)}`);
     const stale = (record.missedRefreshes || 0) > 0;
     details.push(
       `MMSI ${record.mmsi || '--'} · ${formatPositionTime(record)}${stale ? ' · STALE' : ''}`,

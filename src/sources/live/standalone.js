@@ -220,7 +220,14 @@ export function createVesselSource({
         throw error;
       }
       return {
-        ...vesselSnapshot(payload, { source: feedSource(response, 'Vessels') }),
+        ...vesselSnapshot(payload, {
+          source: feedSource(response, 'Vessels'),
+          // A keyless snapshot covers a view window, and says which.
+          coverage:
+            typeof payload?.coverage === 'string'
+              ? payload.coverage.slice(0, 80)
+              : undefined,
+        }),
         status: response.status,
       };
     },

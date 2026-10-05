@@ -177,3 +177,22 @@ test('AI summaries missing a non-nominal provenance token fall back deterministi
   assert.equal(hudSummaryMatchesProvenance('Austin stale flights over downtown', { overall: 'stale' }), true);
   assert.equal(hudSummaryMatchesProvenance('Austin flights operating normally today', { overall: 'nominal' }), true);
 });
+
+test('the realtime status route reports whether voice can start, never the key', async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  try {
+    const status = installOpenAiRoutes().get('/api/realtime/status');
+    process.env.OPENAI_API_KEY = '';
+    const keyless = await invokeRoute(status);
+    assert.equal(keyless.statusCode, 200);
+    assert.deepEqual(keyless.body, { configured: false });
+    process.env.OPENAI_API_KEY = 'fixture-upstream-secret';
+    const keyed = await invokeRoute(status);
+    assert.deepEqual(keyed.body, { configured: true });
+    assert.equal(keyed.headers['cache-control'], 'no-store');
+    assert.equal((await invokeRoute(status, { method: 'POST' })).statusCode, 405);
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});

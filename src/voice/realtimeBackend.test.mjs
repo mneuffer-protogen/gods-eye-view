@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRealtimeBackend } from './realtimeBackend.js';
+import {
+  createRealtimeBackend,
+  probeRealtimeAvailability,
+} from './realtimeBackend.js';
 import { GevRealtimeController } from './realtimeController.js';
 
 const tokenReply = () =>
@@ -129,4 +132,19 @@ test('controller lifetime stops pending transport and releases resources through
   assert.equal(stopped, 1);
   assert.equal(controller.stream, null);
   assert.equal(controller.isActive(), false);
+});
+
+test('the availability probe reads the status route and stays silent on anything else', async () => {
+  const probe = (reply) =>
+    probeRealtimeAvailability({ transport: async () => reply() });
+  assert.equal(await probe(() => Response.json({ configured: false })), false);
+  assert.equal(await probe(() => Response.json({ configured: true })), true);
+  assert.equal(await probe(() => new Response('', { status: 404 })), null);
+  assert.equal(await probe(() => Response.json({})), null);
+  assert.equal(
+    await probe(() => {
+      throw new Error('offline');
+    }),
+    null,
+  );
 });

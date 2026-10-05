@@ -53,7 +53,8 @@ export async function loadPhotorealisticTileset(
   for (const attempt of attempts) {
     try {
       const tileset = await attempt.create();
-      return { tileset, route: attempt.route, errors };
+      // A route with nothing to offer is skipped without an error.
+      if (tileset) return { tileset, route: attempt.route, errors };
     } catch (error) {
       errors.push(error instanceof Error ? error : new Error(String(error)));
     }
@@ -76,11 +77,12 @@ export function createGoogleDirectTileset(Cesium, key) {
 /**
  * Google 3D with short-lived tokens instead of a key. Every tile request
  * carries the token as a header; a tile refused for an expired token gets
- * the renewed one and is tried once more.
+ * the renewed one and is tried once more. Resolves null when the server
+ * offers no tokens: that is the ordinary keyless case, not a failure.
  */
 export async function createGoogleTokenTileset(Cesium, tokens) {
   const token = await tokens.token();
-  if (!token) throw new Error('Google 3D tokens are not offered');
+  if (!token) return null;
   const credit = Cesium.GoogleMaps.getDefaultCredit?.();
   const resource = new Cesium.Resource({
     url: `${Cesium.GoogleMaps.mapTilesApiEndpoint}v1/3dtiles/root.json`,

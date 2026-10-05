@@ -5,6 +5,7 @@ import { WebSocketServer } from 'ws';
 import { setTimeout as delay } from 'node:timers/promises';
 import * as providers from '../../server/providers/live.js';
 import * as portable from '../../src/data/adsbLolFallback.js';
+import { _resetOpenWatersForTest } from '../../server/providers/vessels/open-waters.js';
 
 function install(plugin, preview = false) {
   const routes = new Map();
@@ -283,6 +284,91 @@ test('AIS preview route ingests through the socket, returns tracks and disposes 
   await restarted('/api/vessels');
   for (let i = 0; i < 100 && sockets.length < 2; i++) await delay(10);
   assert.equal(sockets.length, 2);
+});
+
+test('without an AISStream key the vessel route serves a keyless Open Waters view window', async (t) => {
+  environment(t, { AISSTREAM_API_KEY: undefined, OPENWATERS_TOKEN: undefined });
+  _resetOpenWatersForTest();
+  t.after(_resetOpenWatersForTest);
+  t.mock.method(console, 'warn', () => {});
+  const seen = new Date(Date.now() - 60_000).toISOString();
+  const urls = [];
+  let fail = false;
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    urls.push({ url: String(url), auth: init?.headers?.Authorization });
+    if (fail)
+      return new Response('bbox not allowed for this key', { status: 400 });
+    return Response.json({
+      type: 'FeatureCollection',
+      attribution: {
+        aishub: 'Open Waters AIS (https://openwaters.io/ais/). AISHub',
+      },
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [1.2, 50.9] },
+          properties: {
+            mmsi: 232001234,
+            kind: 'vessel',
+            name: 'CHANNEL',
+            sog: 11,
+            seen,
+          },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [1.3, 50.8] },
+          properties: { mmsi: 2275200, kind: 'base', seen },
+        },
+      ],
+    });
+  });
+  const plugin = providers.aisLiveProxy();
+  t.after(() => plugin.closeBundle());
+  const request = install(plugin);
+
+  const res = await request(
+    '/api/vessels',
+    '/?maxRows=50&lat=50.9&lon=1.2&radius_km=40',
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.headers['x-feed-source'], 'Open Waters AIS');
+  const data = JSON.parse(res.body);
+  assert.equal(data.status, 'live');
+  assert.deepEqual(
+    data.rows.map((row) => row.mmsi),
+    ['232001234'],
+  );
+  assert.match(data.coverage, /^view window /);
+  assert.deepEqual(data.attribution, [
+    'Open Waters AIS (https://openwaters.io/ais/). AISHub',
+  ]);
+  const bbox = new URL(urls[0].url).searchParams
+    .get('bbox')
+    .split(',')
+    .map(Number);
+  assert.equal(urls[0].auth, undefined, 'anonymous reads carry no credential');
+  assert.ok(bbox[0] < 50.9 && bbox[2] > 50.9 && bbox[1] < 1.2 && bbox[3] > 1.2);
+
+  // A wide view sends no area; the last one asked for stands in, from cache.
+  const wide = JSON.parse((await request('/api/vessels', '/?maxRows=50')).body);
+  assert.equal(urls.length, 1);
+  assert.equal(wide.rows.length, 1);
+
+  // A refused or failed upstream with nothing cached is an honest 503.
+  fail = true;
+  const refused = await request(
+    '/api/vessels',
+    '/?lat=-33&lon=151&radius_km=40',
+  );
+  assert.equal(refused.statusCode, 503);
+  assert.equal(JSON.parse(refused.body).status, 'error');
+
+  // Snapshot rows feed the recent-path buffer the track route reads.
+  const track = JSON.parse(
+    (await request('/api/vessels', '/track?mmsi=232001234')).body,
+  );
+  assert.match(track.source, /^Open Waters AIS/);
 });
 
 test('military aircraft route serves stale cache on an upstream 429 and cools down for Retry-After', async (t) => {

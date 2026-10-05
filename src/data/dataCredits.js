@@ -126,6 +126,14 @@ export const DATA_CREDITS = [
       '<a href="https://aisstream.io" target="_blank" rel="noopener">AISStream.io</a>',
   },
   {
+    key: 'openwaters',
+    html:
+      'Keyless live vessels (AIS): ' +
+      '<a href="https://openwaters.io/ais/" target="_blank" rel="noopener">Open Waters AIS</a> ' +
+      '(aggregate <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL</a>) · ' +
+      '<a href="https://www.aishub.net" target="_blank" rel="noopener">AISHub</a> · aisstream.io · volunteer receivers',
+  },
+  {
     key: 'celestrak',
     html:
       'Satellites (TLEs): CelesTrak ' +

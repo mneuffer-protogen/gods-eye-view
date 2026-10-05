@@ -1336,6 +1336,7 @@ test('buildSelectedVesselCard: full detail card with MMSI + position time', () =
   assert.equal(card.title, 'EVER GIVEN');
   assert.deepEqual(card.details, [
     'CONTAINER SHIP · 14.5KT · 231°',
+    'FLAG PANAMA (PA)',
     'MMSI 353136000 · POS: 11:22:33Z',
   ]);
 });
@@ -1450,6 +1451,7 @@ test('buildSelectedVesselCard: destination line + STALE marker; placeholders for
   assert.deepEqual(card.details, [
     'TANKER · --KT · --°',
     '→ ROTTERDAM',
+    'FLAG PANAMA (PA)',
     'MMSI 353136000 · POS: LIVE · STALE',
   ]);
 });

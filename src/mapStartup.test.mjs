@@ -213,6 +213,18 @@ test('a server without tokens falls back to ion', async () => {
     cesiumToken: 'ion-secret',
   });
   assert.equal(result.route, 'google-ion');
-  assert.equal(result.errors.length, 1);
+  // No tokens on offer is the keyless default, not a failure to report.
+  assert.equal(result.errors.length, 0);
   assert.equal(Cesium.calls.length, 1);
+});
+
+test('a keyless boot with no tokens on offer reports no Google 3D error', async () => {
+  const Cesium = fakeCesium([]);
+  const result = await loadPhotorealisticTileset(Cesium, {
+    googleTokens: tokenSource(),
+  });
+  assert.equal(result.tileset, null);
+  assert.equal(result.route, 'osm');
+  assert.deepEqual(result.errors, []);
+  assert.equal(Cesium.calls.length, 0);
 });

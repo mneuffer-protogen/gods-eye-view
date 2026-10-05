@@ -11,6 +11,7 @@ import {
 } from './terrainRetry.js';
 import {
   KEYLESS_TERRAIN_URL,
+  createKeylessTerrain,
   createKeylessTerrainResource,
 } from './terrain.js';
 
@@ -274,4 +275,27 @@ test('a tile cancelled before or during its wait is not re-requested', async () 
   clock.now += clock.sleeps.at(-1).ms;
   clock.sleeps.at(-1).resolve();
   assert.equal(await pending, false);
+});
+
+test('a hung keyless terrain endpoint falls back to the flat ellipsoid instead of holding startup', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const started = Date.now();
+  const { provider } = await createKeylessTerrain({
+    timeoutMs: 20,
+    fromUrl: () => new Promise(() => {}),
+  });
+  assert.ok(provider instanceof Cesium.EllipsoidTerrainProvider);
+  assert.ok(Date.now() - started < 1000);
+});
+
+test('a keyless terrain endpoint that answers in time is used', async () => {
+  const answered = { id: 're-earth' };
+  const { provider } = await createKeylessTerrain({
+    timeoutMs: 1000,
+    fromUrl: async (resource) => {
+      assert.equal(resource.url, KEYLESS_TERRAIN_URL);
+      return answered;
+    },
+  });
+  assert.equal(provider, answered);
 });

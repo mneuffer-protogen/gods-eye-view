@@ -343,6 +343,12 @@
   font-size: 0.43rem;
 }
 
+/* No voice provider configured: the mic stays visible but reads as off. */
+#command-dock #gev-voice-control[data-status='unconfigured'] #gev-voice-button {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 #command-dock #gev-voice-control[data-status='error'] {
   display: grid;
   align-items: initial;
