@@ -10,11 +10,18 @@
  * A ray is the fallback for a controller that is not at the globe and for
  * system pointers (gaze and pinch), which have no hand to reach with: it can
  * turn the globe from where it hits and tap-select along its line.
+ *
+ * In the tabletop view the map takes the globe's place:
+ *   Pinch on the map (or a ray onto it)  pan; the ground stays under the hand
+ *   Two hands on the map                 zoom and turn it by their spread
+ *   Pinch or grip on the glass rim       carry the table, as with the globe
+ *   Quick pinch on a contact             select it
  */
 
 import * as THREE from 'three';
 import { isSpatialPointer } from './framework/xr-capabilities.js';
 import { trackedHandPose } from './framework/xr-hands.js';
+import { MAP_TABLE } from './mapTable.js';
 import {
   createSpinMomentum,
   isTap,
@@ -43,6 +50,9 @@ const RESIZE_STEP = 0.03;
  * @param {(contact: object|null) => void} options.onSelect
  * @param {() => void} [options.onTableMoved] after a carry ends
  * @param {(input: object) => boolean} [options.onPressFirst] may consume a press first
+ * @param {() => 'globe'|'tabletop'} [options.mode] which view is showing
+ * @param {ReturnType<import('./tabletopView.js').createTabletopView>} [options.tabletop]
+ * @param {() => void} [options.onMapReleased] after the last hand lets go of the map
  */
 export function createGlobeInteraction({
   xr,
@@ -52,11 +62,16 @@ export function createGlobeInteraction({
   onSelect,
   onTableMoved = () => {},
   onPressFirst = () => false,
+  mode = () => 'globe',
+  tabletop = null,
+  onMapReleased = () => {},
 }) {
   const { table, globe, pivot } = globeTable;
   const momentum = createSpinMomentum();
   const globeHolds = new Map();
   const carryHolds = new Map();
+  // Tabletop holds: each hand's table point and the site point it grabbed.
+  const mapHolds = new Map();
   const center = new THREE.Vector3();
   const parentQuaternion = new THREE.Quaternion();
   let globeStart = null;
@@ -134,6 +149,11 @@ export function createGlobeInteraction({
     for (const hold of globeHolds.values()) hold.from.copy(hold.at);
     momentum.reset();
   }
+  /** Re-grab the ground under every map hand, when one joins or leaves. */
+  function rebaseMap() {
+    for (const hold of mapHolds.values())
+      hold.anchor = tabletop.mapTable.toSite(hold.hand);
+  }
   function rebaseCarry() {
     carryStart = { position: table.position.clone(), yaw: table.rotation.y };
     for (const hold of carryHolds.values()) hold.from.copy(hold.at);
@@ -151,6 +171,10 @@ export function createGlobeInteraction({
     }
     const now = performance.now();
     const reach = reachPoint(input);
+    if (mode() === 'tabletop' && tabletop) {
+      beginOnMap(state, reach, now);
+      return;
+    }
     if (reach && globeTable.onGlobe(reach)) {
       state.press = {
         kind: 'globe',
@@ -201,9 +225,92 @@ export function createGlobeInteraction({
     state.press = { kind: 'air', startMs: now, travel: 0, ray };
   }
 
+  function beginCarry(state, reach, now) {
+    state.press = {
+      kind: 'carry',
+      startMs: now,
+      travel: 0,
+      origin: reach.clone(),
+    };
+    carryHolds.set(state.input, { from: reach.clone(), at: reach.clone() });
+    rebaseCarry();
+  }
+
+  function beginOnMap(state, reach, now) {
+    const { input } = state;
+    const map = tabletop.mapTable;
+    if (reach && map.onRim(reach)) {
+      beginCarry(state, reach, now);
+      return;
+    }
+    if (reach) {
+      const p = map.tablePoint(reach);
+      if (map.over(p) && p.y > -0.03 && p.y < MAP_TABLE.reachAbove) {
+        state.press = {
+          kind: 'map',
+          direct: true,
+          startMs: now,
+          travel: 0,
+          origin: reach.clone(),
+        };
+        mapHolds.set(input, { hand: { x: p.x, z: p.z }, anchor: null });
+        rebaseMap();
+        return;
+      }
+    }
+    const ray = rayOf(input);
+    const hit = map.rayPoint(ray.origin, ray.direction);
+    if (hit) {
+      state.press = {
+        kind: 'map',
+        direct: false,
+        startMs: now,
+        travel: 0,
+        origin: map.group.localToWorld(new THREE.Vector3(hit.x, 0, hit.z)),
+        ray,
+      };
+      mapHolds.set(input, { hand: { x: hit.x, z: hit.z }, anchor: null });
+      rebaseMap();
+      return;
+    }
+    state.press = { kind: 'air', startMs: now, travel: 0, ray };
+  }
+
+  /** The map point under a held press now: its hand's or its ray's, in world space. */
+  function mapPressPoint(state) {
+    const map = tabletop.mapTable;
+    if (state.press.direct) {
+      const reach = reachPoint(state.input);
+      if (!reach) return null;
+      const p = map.tablePoint(reach);
+      return { world: reach, table: { x: p.x, z: p.z } };
+    }
+    state.press.ray = rayOf(state.input);
+    // A held ray keeps dragging past the rim; only a miss above the horizon lets go.
+    const hit = map.rayPoint(
+      state.press.ray.origin,
+      state.press.ray.direction,
+      10,
+    );
+    if (!hit) return null;
+    return {
+      world: map.group.localToWorld(new THREE.Vector3(hit.x, 0, hit.z)),
+      table: hit,
+    };
+  }
+
   /** Select the contact a finished tap meant, or clear the selection. */
   function selectFromTap(state) {
     const { press, input } = state;
+    if (mode() === 'tabletop' && tabletop) {
+      const { points, owners } = tabletop.contacts.worldPoints();
+      const ray = press.ray ?? rayOf(input);
+      const index = press.direct
+        ? pickNearPoint(press.origin, points, DIRECT_PICK)
+        : pickAlongRay(ray.origin, ray.direction, points, RAY_PICK);
+      onSelect(index >= 0 ? owners[index] : null);
+      return;
+    }
     const { points, owners } = contacts.worldPoints();
     let index = -1;
     if (press.kind === 'globe' && press.direct) {
@@ -249,6 +356,11 @@ export function createGlobeInteraction({
       else onTableMoved();
       return;
     }
+    if (press.kind === 'map') {
+      mapHolds.delete(input);
+      if (mapHolds.size) rebaseMap();
+      else if (!tap) onMapReleased();
+    }
     if (tap) selectFromTap({ press, input });
   }
 
@@ -269,7 +381,7 @@ export function createGlobeInteraction({
 
   return {
     get holding() {
-      return globeHolds.size > 0 || carryHolds.size > 0;
+      return globeHolds.size > 0 || carryHolds.size > 0 || mapHolds.size > 0;
     },
     get carrying() {
       return carryHolds.size > 0;
@@ -316,6 +428,20 @@ export function createGlobeInteraction({
           press.ray = rayOf(input);
           continue;
         }
+        if (press.kind === 'map') {
+          const point = mapPressPoint(state);
+          if (!point) {
+            end(state, { allowTap: false });
+            continue;
+          }
+          press.travel = Math.max(
+            press.travel,
+            point.world.distanceTo(press.origin),
+          );
+          const hold = mapHolds.get(input);
+          if (hold) hold.hand = point.table;
+          continue;
+        }
         let at = null;
         if (press.kind === 'globe' && !press.direct) {
           press.ray = rayOf(input);
@@ -350,6 +476,11 @@ export function createGlobeInteraction({
       } else {
         const quaternion = worldQuaternion();
         if (momentum.coast(quaternion, dt)) setWorldQuaternion(quaternion);
+      }
+      if (mapHolds.size && tabletop) {
+        tabletop.mapTable.solve(
+          [...mapHolds.values()].filter((hold) => hold.anchor),
+        );
       }
       if (carryHolds.size && carryStart) {
         const solved = solveTableCarry(carryStart, [...carryHolds.values()]);

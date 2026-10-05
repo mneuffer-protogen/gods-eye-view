@@ -27,6 +27,13 @@ export const XR_SETTINGS = Object.freeze({
     values: ['on', 'off'],
     label: 'Day and night',
   }),
+  // Panels as compositor layers, sharp at display resolution, in headsets
+  // that offer WebXR Layers; off draws them in the scene as before.
+  sharpPanels: Object.freeze({
+    default: 'on',
+    values: ['on', 'off'],
+    label: 'Sharp panels',
+  }),
   renderQuality: FRAMEWORK_SETTINGS.renderQuality,
   controllerVisual: FRAMEWORK_SETTINGS.controllerVisual,
 });
@@ -44,10 +51,16 @@ export function consoleContent({
   mixedReality = false,
   canPlace = false,
   presenting = false,
+  view = 'globe',
 }) {
+  const onMap = view === 'tabletop';
   return {
     taskId: 'console',
-    eyebrow: mixedReality ? 'LIVE · MIXED REALITY' : 'LIVE · TABLETOP GLOBE',
+    eyebrow: mixedReality
+      ? 'LIVE · MIXED REALITY'
+      : onMap
+        ? 'LIVE · TABLETOP MAP'
+        : 'LIVE · TABLETOP GLOBE',
     title: "God's Eye View",
     blocks: [
       {
@@ -64,7 +77,11 @@ export function consoleContent({
         label: feed.label,
         selected: feed.enabled,
       })),
-      { id: 'face-home', label: 'Face start location' },
+      { id: 'view', label: onMap ? 'Globe view' : 'Tabletop map' },
+      {
+        id: 'face-home',
+        label: onMap ? 'Map start location' : 'Face start location',
+      },
       ...(canPlace ? [{ id: 'place', label: 'Set on a surface' }] : []),
       { id: 'settings', label: 'Settings' },
       ...(presenting ? [{ id: 'exit', label: 'Exit headset' }] : []),

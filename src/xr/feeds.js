@@ -364,8 +364,17 @@ export function createFeedHub({
       };
     }
     if (id === 'vessels') {
+      // Around the focus: the keyless feed serves a window, not the world.
+      const point = focus();
+      const area = point
+        ? {
+            lat: point.lat,
+            lon: point.lon,
+            radiusKm: Math.min(450, Math.max(10, point.radiusKm ?? 450)),
+          }
+        : undefined;
       const snapshot = await sources.vessels.getSnapshot(
-        { maxRows: 12_000 },
+        { maxRows: 12_000, area },
         { signal },
       );
       return {

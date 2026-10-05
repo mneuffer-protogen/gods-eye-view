@@ -29,6 +29,7 @@ import { XRToolkit } from './framework/xr-toolkit.js';
 import { trackedHandPose } from './framework/xr-hands.js';
 import { headDirection, headPosition } from './framework/xr-head.js';
 import { PanelManager } from './framework/panels/manager.js';
+import { createPanelView } from './framework/panels/view.js';
 import { PanelInput, attachDesktopPanels } from './framework/panels/input.js';
 import { createSettings } from './framework/settings.js';
 import { brand, brandReady } from './brand.js';
@@ -42,9 +43,14 @@ import {
   satelliteContact,
 } from './feeds.js';
 import { buildMosaic, IMAGERY_SOURCES } from './imagery.js';
-import { facingQuaternion, startFocus } from './geo.js';
+import { facingQuaternion, startFocus, vectorToLatLon } from './geo.js';
 import { createGlobeInteraction } from './interaction.js';
 import { createSurfaceAnchor } from './surfaceAnchor.js';
+import { createTabletopView } from './tabletopView.js';
+import { MAP_TABLE } from './mapTable.js';
+import { createViewSwitch } from './viewSwitch.js';
+import { prepareSharpLayers, sharpLayer } from './sharpLayer.js';
+import { createQuadLayerBackend } from './quadLayers.js';
 import {
   pickAlongRay,
   raySphere,
@@ -65,7 +71,9 @@ import {
 const TOOLKIT_GREETING =
   'Reach and pinch a block to pick it up. Controllers also work.';
 const DATA_CREDITS =
-  'Aircraft: OpenSky Network · adsb.lol · Vessels: AISStream · Satellites: CelesTrak · Earthquakes: USGS';
+  'Aircraft: OpenSky Network · adsb.lol · Vessels: Open Waters AIS · AISStream · Satellites: CelesTrak · Earthquakes: USGS';
+// Contact kinds the tabletop map draws; satellites stay on the globe.
+const MAP_KINDS = new Set(['aircraft', 'military', 'vessel', 'earthquake']);
 // Satellites propagated per frame; the whole catalogue refreshes every few
 // frames without a spike.
 const SATELLITES_PER_FRAME = 140;
@@ -81,6 +89,7 @@ async function start() {
   const enterButton = document.querySelector('#enter-xr');
   const supportLine = document.querySelector('#xr-support');
   const panelDom = document.querySelector('#xr-panels');
+  const viewButton = document.querySelector('#toggle-view');
 
   function say(message) {
     toast.textContent = message;
@@ -111,6 +120,8 @@ async function start() {
   renderer.setClearColor(0x000000, 0);
   renderer.xr.enabled = true;
   renderer.xr.setReferenceSpaceType('local-floor');
+  // The tabletop map is cut to its round window with clipping planes.
+  renderer.localClippingEnabled = true;
   // Controller models are lit materials; everything of the globe's own is unlit.
   scene.add(new THREE.HemisphereLight('#e8f6ff', '#1a2230', 2.2));
   const key = new THREE.DirectionalLight('#ffffff', 1.4);
@@ -159,8 +170,23 @@ async function start() {
   const contacts = createContactLayer(globeTable.globe);
   contacts.setGlobeRadius(globeTable.radius);
 
+  // The tabletop map stands on the same carried table, hidden until asked for.
+  const tabletop = createTabletopView({
+    brand,
+    dataCredits: DATA_CREDITS,
+    onError: (error) => console.warn('[tabletop]', error?.message || error),
+  });
+  globeTable.table.add(tabletop.group);
+  const views = createViewSwitch({ globeTable, tabletop });
+
+  /** The point a viewer at `eye` sees at the middle of the globe. */
+  function facingLatLon(eye) {
+    globeTable.globe.updateWorldMatrix(true, false);
+    return vectorToLatLon(globeTable.globe.worldToLocal(eye.clone()));
+  }
+
   /** Turn the globe so the focus faces eyes at `eye` (world space). */
-  function faceFocus(eye) {
+  function faceFocus(eye, target = focus) {
     const center = globeTable.center(new THREE.Vector3());
     const flat = Math.hypot(eye.x - center.x, eye.z - center.z);
     const elevation = Math.atan2(eye.y - center.y, Math.max(flat, 1e-3));
@@ -170,9 +196,13 @@ async function start() {
       0,
     );
     globeTable.globe.quaternion.copy(
-      tiltedFacing(facingQuaternion(focus.lat, focus.lon), elevation),
+      tiltedFacing(facingQuaternion(target.lat, target.lon), elevation),
     );
   }
+  const eyePosition = () =>
+    renderer.xr.isPresenting
+      ? headPosition(rig, renderer.xr.getCamera())
+      : camera.position.clone();
   camera.position.set(0, 1.7, 0.95);
   faceFocus(camera.position);
 
@@ -201,12 +231,31 @@ async function start() {
   globeTable.setDayNight(settings.get('dayNight') === 'on');
 
   // --- panels ---------------------------------------------------------------
+  // In a headset with WebXR Layers each panel is composited as its own quad
+  // layer, sampled once at display resolution, so its text stays sharp;
+  // everywhere else (and with the setting off) panels draw as before.
+  const quadLayers = createQuadLayerBackend({ renderer, rig });
+  const sharpBackend = {
+    submit: (id, request) =>
+      settings.get('sharpPanels') === 'on' ? quadLayers.submit(id, request) : 0,
+    release: (id) => quadLayers.release(id),
+  };
   const panels = new PanelManager({
     scene,
     renderer,
     brand,
     logo: null,
     onStatus: say,
+    viewFactory: (...args) => {
+      const view = createPanelView(...args);
+      const sharp = sharpLayer(view.face, { backend: sharpBackend });
+      const dispose = view.dispose;
+      view.dispose = () => {
+        sharp.dispose();
+        dispose.call(view);
+      };
+      return view;
+    },
   });
   panels.collision.registerBox('globe', globeTable.earth);
   panels.collision.registerBox('globe-base', globeTable.glass.mesh);
@@ -267,8 +316,11 @@ async function start() {
     const table = globeTable.table;
     table.updateMatrixWorld(true);
     const viewer = panels.viewer.position;
-    const reach = Math.max(TABLE.baseRadius, globeTable.radius);
-    const height = TABLE.clearance + globeTable.radius;
+    const onMap = views.target === 'tabletop';
+    const reach = onMap
+      ? MAP_TABLE.window / 2 + MAP_TABLE.rim
+      : Math.max(TABLE.baseRadius, globeTable.radius);
+    const height = onMap ? 0.26 : TABLE.clearance + globeTable.radius;
     for (const [panel, side] of [
       [consolePanel, 1],
       [settingsPanel, 1],
@@ -298,12 +350,77 @@ async function start() {
         mixedReality,
         canPlace: mixedReality && anchor.state === 'ready',
         presenting: !!activeSession,
+        view: views.target,
       }),
     );
+    viewButton.textContent =
+      views.target === 'tabletop' ? 'Globe view' : 'Tabletop map';
+    viewButton.setAttribute(
+      'aria-pressed',
+      String(views.target === 'tabletop'),
+    );
+  }
+
+  /**
+   * Switch between the globe and the tabletop map. The map opens on the
+   * selected contact, else on the part of the globe facing the viewer; the
+   * globe comes back turned to show where the map was.
+   */
+  // Where and how wide the feeds were last asked for, so a pan or a zoom
+  // out past them asks again.
+  let lastFeedCenter = null;
+  let lastFeedRadiusKm = 0;
+  function toggleView() {
+    interaction.reset();
+    if (views.target === 'globe') {
+      const at = contacts.selected
+        ? { lat: contacts.selected.lat, lon: contacts.selected.lon }
+        : facingLatLon(eyePosition());
+      tabletop.open(at.lat, at.lon);
+      tabletop.select(contacts.selected);
+      views.show('tabletop');
+      lastFeedCenter = at;
+      lastFeedRadiusKm = tabletop.radiusKm;
+      feedHub.refresh('aircraft');
+      feedHub.refresh('vessels');
+      say(
+        'Tabletop map. Pinch the map to pan it, two hands to zoom and turn it.',
+      );
+    } else {
+      interaction.stopSpin();
+      faceFocus(eyePosition(), tabletop.center());
+      views.show('globe');
+      say('Globe view.');
+    }
+    refreshConsole();
+    placePanels();
+  }
+
+  /** After a pan or zoom: reopen far-off frames and re-ask the feeds there. */
+  function onMapSettled() {
+    tabletop.recentreIfFar();
+    const center = tabletop.center();
+    const moved = lastFeedCenter
+      ? Math.hypot(
+          center.lat - lastFeedCenter.lat,
+          (center.lon - lastFeedCenter.lon) *
+            Math.cos((center.lat * Math.PI) / 180),
+        ) * 111
+      : Infinity;
+    if (
+      moved > Math.max(20, tabletop.radiusKm * 0.3) ||
+      tabletop.radiusKm > lastFeedRadiusKm * 1.3
+    ) {
+      lastFeedCenter = center;
+      lastFeedRadiusKm = tabletop.radiusKm;
+      feedHub.refresh('aircraft');
+      feedHub.refresh('vessels');
+    }
   }
 
   function select(contact) {
     contacts.select(contact);
+    tabletop.select(contact);
     if (contact) {
       contactPanel.setContent(contactContent(contact));
       contactPanel.show();
@@ -316,20 +433,24 @@ async function start() {
       const feed = id.slice(5);
       const on = !feedHub.states[feed]?.enabled;
       feedHub.setEnabled(feed, on);
-      for (const kind of FEED_KINDS[feed] || []) contacts.setVisible(kind, on);
+      for (const kind of FEED_KINDS[feed] || []) {
+        contacts.setVisible(kind, on);
+        tabletop.setVisible(kind, on);
+      }
       if (
         !on &&
         contacts.selected &&
         FEED_KINDS[feed]?.includes(contacts.selected.kind)
       )
         select(null);
+    } else if (id === 'view') {
+      toggleView();
     } else if (id === 'face-home') {
       interaction.stopSpin();
-      faceFocus(
-        renderer.xr.isPresenting
-          ? headPosition(rig, renderer.xr.getCamera())
-          : camera.position,
-      );
+      if (views.target === 'tabletop') {
+        tabletop.open(focus.lat, focus.lon);
+        onMapSettled();
+      } else faceFocus(eyePosition());
     } else if (id === 'place') {
       placing = true;
       say(
@@ -385,6 +506,9 @@ async function start() {
     panels,
     onSelect: select,
     onTableMoved: placePanels,
+    mode: () => views.input,
+    tabletop,
+    onMapReleased: onMapSettled,
     onPressFirst: () => {
       if (!placing) return false;
       placing = false;
@@ -400,10 +524,16 @@ async function start() {
   let satelliteContacts = [];
   let satelliteCursor = 0;
   const feedHub = createFeedHub({
-    focus: () => focus,
+    // On the map the feeds follow its centre and width; on the globe, the
+    // start location.
+    focus: () =>
+      views.target === 'tabletop'
+        ? { ...tabletop.center(), radiusKm: tabletop.radiusKm }
+        : focus,
     onContacts: (feed, list) => {
       const [kind] = FEED_KINDS[feed];
       contacts.setContacts(kind, list);
+      if (MAP_KINDS.has(kind)) tabletop.setContacts(kind, list);
       if (contacts.selected?.kind === kind && contactPanel.visible)
         contactPanel.setContent(contactContent(contacts.selected));
     },
@@ -454,6 +584,7 @@ async function start() {
   setInterval(() => globeTable.setSun(), 60_000);
 
   // --- desktop preview ------------------------------------------------------
+  viewButton.addEventListener('click', toggleView);
   const orbit = new OrbitControls(camera, canvas);
   orbit.target.copy(globeTable.center(new THREE.Vector3()));
   orbit.enableDamping = true;
@@ -462,6 +593,72 @@ async function start() {
   orbit.update();
   {
     let down = null;
+    // A left drag that starts on the map pans it instead of orbiting.
+    let mapDrag = null;
+    const pointerRay = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(ndc, camera);
+      return ray;
+    };
+    const mapPoint = (event, margin = 0) => {
+      if (views.target !== 'tabletop' || renderer.xr.isPresenting) return null;
+      const { ray } = pointerRay(event);
+      return tabletop.mapTable.rayPoint(ray.origin, ray.direction, margin);
+    };
+    // Capture listeners run before OrbitControls' own on the same canvas.
+    canvas.addEventListener(
+      'pointerdown',
+      (event) => {
+        const hit = event.button === 0 ? mapPoint(event) : null;
+        if (!hit) return;
+        orbit.enabled = false;
+        mapDrag = {
+          id: event.pointerId,
+          anchor: tabletop.mapTable.toSite(hit),
+        };
+        try {
+          canvas.setPointerCapture(event.pointerId);
+        } catch {
+          /* a synthetic or already-released pointer */
+        }
+      },
+      { capture: true },
+    );
+    canvas.addEventListener('pointermove', (event) => {
+      if (!mapDrag || event.pointerId !== mapDrag.id) return;
+      const hit = mapPoint(event, 10);
+      if (hit)
+        tabletop.mapTable.solve([
+          { anchor: mapDrag.anchor, hand: { x: hit.x, z: hit.z } },
+        ]);
+    });
+    const endMapDrag = (event) => {
+      if (!mapDrag || event.pointerId !== mapDrag.id) return;
+      mapDrag = null;
+      if (!renderer.xr.isPresenting) orbit.enabled = true;
+      onMapSettled();
+    };
+    canvas.addEventListener('pointerup', endMapDrag);
+    canvas.addEventListener('pointercancel', endMapDrag);
+    let wheelSettle = null;
+    canvas.addEventListener(
+      'wheel',
+      (event) => {
+        const hit = mapPoint(event);
+        if (!hit) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        tabletop.mapTable.zoom(hit, Math.exp(event.deltaY * 0.0015));
+        clearTimeout(wheelSettle);
+        wheelSettle = setTimeout(onMapSettled, 300);
+      },
+      { capture: true, passive: false },
+    );
     canvas.addEventListener('pointerdown', (event) => {
       down = { x: event.clientX, y: event.clientY };
     });
@@ -470,13 +667,19 @@ async function start() {
       const moved = Math.hypot(event.clientX - down.x, event.clientY - down.y);
       down = null;
       if (moved > 4) return;
-      const rect = canvas.getBoundingClientRect();
-      const ndc = new THREE.Vector2(
-        ((event.clientX - rect.left) / rect.width) * 2 - 1,
-        -((event.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(ndc, camera);
+      const ray = pointerRay(event);
+      if (views.target === 'tabletop') {
+        const { points, owners } = tabletop.contacts.worldPoints();
+        const index = pickAlongRay(
+          ray.ray.origin,
+          ray.ray.direction,
+          points,
+          0.02,
+        );
+        if (index >= 0) select(owners[index]);
+        else if (mapPoint(event)) select(null);
+        return;
+      }
       const { points, owners } = contacts.worldPoints();
       const center = globeTable.center(new THREE.Vector3());
       const direction = new THREE.Vector3();
@@ -538,10 +741,13 @@ async function start() {
     entryLabel();
     let session = null;
     try {
-      session = await navigator.xr.requestSession(
-        capabilities.mode,
-        sessionOptions(capabilities.mode),
-      );
+      const options = sessionOptions(capabilities.mode);
+      // Compositor layers for sharp panels, where the browser has them.
+      options.optionalFeatures = [
+        ...(options.optionalFeatures ?? []),
+        'layers',
+      ];
+      session = await navigator.xr.requestSession(capabilities.mode, options);
       activeSession = session;
       // Frames around the system menu are not a frame rate.
       lifecycle = watchSession(session, {
@@ -651,6 +857,7 @@ async function start() {
   const head = new THREE.Vector3();
   const forward = new THREE.Vector3();
   let radiusSeen = globeTable.radius;
+  const orbitTarget = new THREE.Vector3();
   renderer.setAnimationLoop((time, frame) => {
     const dt = lastTime == null ? 0 : Math.min((time - lastTime) / 1000, 0.05);
     lastTime = time;
@@ -716,22 +923,29 @@ async function start() {
         );
       }
       interaction.update(dt);
-      globeTable.setHands(
-        xr.inputs.map((input) => {
-          const pose = input.source?.hand ? trackedHandPose(input.hand) : null;
-          return (
-            pose?.position ||
-            (input.grip?.visible
-              ? input.grip.getWorldPosition(new THREE.Vector3())
-              : null)
-          );
-        }),
-      );
+      const hands = xr.inputs.map((input) => {
+        const pose = input.source?.hand ? trackedHandPose(input.hand) : null;
+        return (
+          pose?.position ||
+          (input.grip?.visible
+            ? input.grip.getWorldPosition(new THREE.Vector3())
+            : null)
+        );
+      });
+      globeTable.setHands(hands);
+      if (views.mapShowing) tabletop.mapTable.setHands(hands);
     } else {
-      orbit.target.copy(globeTable.center(new THREE.Vector3()));
+      // On the map the preview orbits the middle of the map, not the globe.
+      if (views.target === 'tabletop')
+        tabletop.group.getWorldPosition(orbitTarget);
+      else globeTable.center(orbitTarget);
+      orbit.target.lerp(orbitTarget, views.switching ? 0.12 : 1);
       orbit.update();
     }
+    views.update(dt);
+    if (views.mapShowing) tabletop.update(dt);
     if (
+      views.target === 'globe' &&
       settings.get('autoSpin') === 'on' &&
       !interaction.holding &&
       !interaction.coasting
@@ -748,6 +962,10 @@ async function start() {
     panels.updateHover();
     panels.update(dt);
     panels.updateDomStatus();
+    if (presenting) {
+      quadLayers.sync();
+      prepareSharpLayers(renderer, scene);
+    }
     renderer.render(scene, camera);
   });
 
@@ -767,6 +985,10 @@ async function start() {
       settings,
       xr,
       interaction,
+      tabletop,
+      views,
+      toggleView,
+      quadLayers,
       IMAGERY_SOURCES,
       quality: () => quality,
     };
