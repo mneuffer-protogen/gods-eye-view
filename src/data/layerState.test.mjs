@@ -9,6 +9,8 @@ import {
   LEGACY_LAYER_STATE_TOKENS,
   LAYER_STATE_REGISTRY,
   LAYER_STATE_STORAGE_KEY,
+  FRESH_VISIT_LAYER_IDS,
+  FRESH_VISIT_STORAGE_KEY,
   LAYER_STATE_TOKEN_ALPHABET,
   LAYER_STATE_TOKEN_RESERVATIONS,
   REGISTERED_LAYER_IDS,
@@ -241,7 +243,11 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   }
   assert.equal(nextLayerStateToken(), '0');
   assert.equal(
-    nextLayerStateToken({ ...LAYER_STATE_TOKEN_RESERVATIONS, alpha: '0', bravo: '3' }),
+    nextLayerStateToken({
+      ...LAYER_STATE_TOKEN_RESERVATIONS,
+      alpha: '0',
+      bravo: '3',
+    }),
     '4',
   );
   const digitsExhausted = {
@@ -274,7 +280,9 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
           [
             ...'0123456789',
             ...[...LAYER_STATE_TOKEN_ALPHABET].flatMap((first) =>
-              [...LAYER_STATE_TOKEN_ALPHABET].map((second) => `${first}${second}`),
+              [...LAYER_STATE_TOKEN_ALPHABET].map(
+                (second) => `${first}${second}`,
+              ),
             ),
           ].map((token, index) => [`occupied-${index}`, token]),
         ),
@@ -296,33 +304,37 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
     true,
   );
   assert.equal(
-    validateLayerStateAllocations(
-      LAYER_STATE_TOKEN_RESERVATIONS,
-      { ...LAYER_STATE_TOKEN_RESERVATIONS, future: '0', next: '3' },
-    ),
+    validateLayerStateAllocations(LAYER_STATE_TOKEN_RESERVATIONS, {
+      ...LAYER_STATE_TOKEN_RESERVATIONS,
+      future: '0',
+      next: '3',
+    }),
     true,
   );
   assert.throws(
-    () => validateLayerStateAllocations(LAYER_STATE_TOKEN_RESERVATIONS, {
-      ...LAYER_STATE_TOKEN_RESERVATIONS,
-      future: '00',
-    }),
+    () =>
+      validateLayerStateAllocations(LAYER_STATE_TOKEN_RESERVATIONS, {
+        ...LAYER_STATE_TOKEN_RESERVATIONS,
+        future: '00',
+      }),
     /next free token 0/,
   );
   const beforeLastDigit = { ...digitsExhausted };
   delete beforeLastDigit['prior-9'];
   assert.equal(
-    validateLayerStateAllocations(
-      beforeLastDigit,
-      { ...beforeLastDigit, futurePair: '00', futureDigit: '9' },
-    ),
+    validateLayerStateAllocations(beforeLastDigit, {
+      ...beforeLastDigit,
+      futurePair: '00',
+      futureDigit: '9',
+    }),
     true,
   );
   assert.equal(
-    validateLayerStateAllocations(
-      digitsExhausted,
-      { ...digitsExhausted, pairB: '01', pairA: '00' },
-    ),
+    validateLayerStateAllocations(digitsExhausted, {
+      ...digitsExhausted,
+      pairB: '01',
+      pairA: '00',
+    }),
     true,
   );
   assert.throws(
@@ -687,10 +699,19 @@ test('a fresh boot starts 3D aircraft ON in proximity — codec, both layers, an
     coordinator.getDurableState().options.flights.models3dMode,
     'proximity',
   );
+  // A fresh boot now restores the fresh-visit layers, and with them the
+  // codec's own aircraft defaults: the same values the module initializers
+  // below must match for a layer the operator turns on by hand.
   assert.deepEqual(
-    paramsCalls,
-    [],
-    'a fresh boot restores nothing — which is exactly why the module initializers below must match',
+    paramsCalls.map(({ models3d, models3dMode }) => ({
+      models3d,
+      models3dMode,
+    })),
+    [
+      { models3d: true, models3dMode: 'proximity' },
+      { models3d: true, models3dMode: 'proximity' },
+    ],
+    'a fresh boot restores the codec defaults, which the initializers below must match',
   );
   coordinator.destroy();
 
@@ -1240,6 +1261,9 @@ test('absent share payload restores local state without rewriting it', async () 
   local.enabledLayerIds = ['earthquakes', 'radio'];
   local.options.radio = { filter: 'talk', volume: 0.42 };
   const storage = memoryStorage(serializeStoredLayerState(local));
+  // A browser past its one-time fresh-visit merge.
+  storage.setItem(FRESH_VISIT_STORAGE_KEY, '1');
+  storage.writes.length = 0;
   const manager = productionManager();
   const coordinator = new LayerStateCoordinator(manager, shareSink(), {
     storage,
@@ -1259,7 +1283,69 @@ test('absent share payload restores local state without rewriting it', async () 
     results.every((result) => result.persistenceWrite === false),
     true,
   );
-  assert.deepEqual(storage.writes, []);
+  assert.deepEqual(
+    storage.writes
+      .map(([key]) => key)
+      .filter((key) => key !== FRESH_VISIT_STORAGE_KEY),
+    [],
+  );
+  coordinator.destroy();
+});
+
+test('a fresh visit turns on the fresh-visit layers without saving them', async () => {
+  const storage = memoryStorage();
+  const manager = productionManager();
+  const coordinator = new LayerStateCoordinator(manager, shareSink(), {
+    storage,
+  });
+  await coordinator.start();
+  assert.equal(coordinator.source, 'defaults');
+  for (const id of FRESH_VISIT_LAYER_IDS)
+    assert.equal(manager.isEnabled(id), true, id);
+  assert.deepEqual(
+    storage.writes.map(([key]) => key),
+    [FRESH_VISIT_STORAGE_KEY],
+    'passive defaults never write the layer state',
+  );
+  coordinator.destroy();
+});
+
+test('saved layers get the fresh-visit set merged in once, then stand as saved', async () => {
+  const local = createDefaultLayerState();
+  local.enabledLayerIds = ['earthquakes', 'radio'];
+  const storage = memoryStorage(serializeStoredLayerState(local));
+  const first = new LayerStateCoordinator(productionManager(), shareSink(), {
+    storage,
+  });
+  await first.start();
+  const merged = first.getDurableState().enabledLayerIds;
+  for (const id of [...FRESH_VISIT_LAYER_IDS, 'radio'])
+    assert.ok(merged.includes(id), id);
+  first.destroy();
+  // The merge was saved; a later visit keeps it, and a choice made after it
+  // stands: no second merge brings a layer back.
+  const later = createDefaultLayerState();
+  later.enabledLayerIds = ['radio'];
+  storage.setItem(LAYER_STATE_STORAGE_KEY, serializeStoredLayerState(later));
+  const second = new LayerStateCoordinator(productionManager(), shareSink(), {
+    storage,
+  });
+  await second.start();
+  assert.deepEqual(second.getDurableState().enabledLayerIds, ['radio']);
+  second.destroy();
+});
+
+test('a share link never gets the fresh-visit layers', async () => {
+  const shared = createDefaultLayerState();
+  shared.enabledLayerIds = ['radio'];
+  const storage = memoryStorage();
+  const coordinator = new LayerStateCoordinator(
+    productionManager(),
+    shareSink(),
+    { storage },
+  );
+  await coordinator.start({ shareLayerState: shared, allowLocalState: false });
+  assert.deepEqual(coordinator.getDurableState().enabledLayerIds, ['radio']);
   coordinator.destroy();
 });
 

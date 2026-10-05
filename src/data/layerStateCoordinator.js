@@ -7,6 +7,8 @@ import {
   LAYER_RESTORE_ORIGINS,
   LAYER_STATE_REGISTRY,
   LAYER_STATE_STORAGE_KEY,
+  FRESH_VISIT_LAYER_IDS,
+  FRESH_VISIT_STORAGE_KEY,
   REGISTRY_BY_ID,
   SHARE_TRACKING_RESTORE_POLICIES,
   cloneLayerState,
@@ -123,9 +125,40 @@ export class LayerStateCoordinator {
       } catch {
         /* best effort */
       }
+      let offered = true;
+      try {
+        offered = Boolean(this.storage?.getItem?.(FRESH_VISIT_STORAGE_KEY));
+        this.storage?.setItem?.(FRESH_VISIT_STORAGE_KEY, '1');
+      } catch {
+        /* best effort */
+      }
       if (stored) {
+        // A browser that saved its layers before the fresh-visit set existed
+        // gets it merged in once; after that its own choices stand.
         selected = stored;
+        if (!offered) {
+          selected = normalizeLayerState({
+            ...stored,
+            enabledLayerIds: [
+              ...new Set([...stored.enabledLayerIds, ...FRESH_VISIT_LAYER_IDS]),
+            ],
+          });
+          // Saved, so the merge outlasts this visit; it never runs again.
+          try {
+            this.storage?.setItem?.(
+              LAYER_STATE_STORAGE_KEY,
+              serializeStoredLayerState(selected),
+            );
+          } catch {
+            /* best effort */
+          }
+        }
         this._source = 'local';
+      } else {
+        selected = normalizeLayerState({
+          ...createDefaultLayerState(),
+          enabledLayerIds: [...FRESH_VISIT_LAYER_IDS],
+        });
       }
     } else {
       // A valid historical camera/style share with no v2 layer payload keeps
