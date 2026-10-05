@@ -311,6 +311,96 @@ test('common button and annotation bindings work with an alternate adapter and c
   }
 });
 
+function availabilityFixture(configured) {
+  const button = new EventTarget();
+  const attributes = {};
+  button.setAttribute = (key, value) => {
+    attributes[key] = value;
+  };
+  const ui = {
+    button,
+    attributes,
+    root: { dataset: {}, remove() {} },
+    status: {},
+    detail: {},
+    tierButton: {},
+    costValue: {},
+    helpDetail: {},
+  };
+  const lifetime = new AbortController();
+  let starts = 0;
+  let bound = 0;
+  const controls = createVoiceCommands({
+    runner: async () => ({ ok: true }),
+    signal: lifetime.signal,
+    createControl: () => ui,
+    availability: async () => configured,
+    createSession({ emit }) {
+      return {
+        capabilities: { costControls: true, pushToTalk: true },
+        start() {
+          starts++;
+          emit({ type: 'state', state: 'listening' });
+        },
+        stop() {
+          emit({ type: 'state', state: 'idle' });
+        },
+        sendText() {},
+        sendMapEvent() {},
+        bindControls() {
+          bound++;
+        },
+      };
+    },
+  });
+  return {
+    ui,
+    controls,
+    lifetime,
+    starts: () => starts,
+    bound: () => bound,
+  };
+}
+
+test('a server without a voice provider shows voice as off and never arms it', async () => {
+  const previous = globalThis.window;
+  globalThis.window = {};
+  try {
+    const f = availabilityFixture(false);
+    await new Promise((done) => setTimeout(done, 0));
+    assert.equal(f.ui.root.dataset.status, 'unconfigured');
+    assert.equal(f.ui.status.textContent, 'OFF');
+    assert.equal(f.ui.detail.textContent, 'VOICE OFF · NO OPENAI KEY');
+    assert.equal(f.ui.attributes['aria-disabled'], 'true');
+    assert.equal(f.ui.tierButton.hidden, true);
+    assert.equal(f.bound(), 0, 'no push-to-talk shortcut without a provider');
+    f.ui.button.dispatchEvent(new Event('click'));
+    await new Promise((done) => setTimeout(done, 0));
+    assert.equal(f.starts(), 0, 'the mic does not try to connect');
+    f.lifetime.abort();
+  } finally {
+    globalThis.window = previous;
+  }
+});
+
+test('a configured or silent server keeps voice controls as they were', async () => {
+  const previous = globalThis.window;
+  globalThis.window = {};
+  try {
+    for (const configured of [true, null]) {
+      const f = availabilityFixture(configured);
+      await new Promise((done) => setTimeout(done, 0));
+      assert.notEqual(f.ui.root.dataset.status, 'unconfigured');
+      assert.equal(f.bound(), 1);
+      f.ui.button.dispatchEvent(new Event('click'));
+      assert.equal(f.starts(), 1);
+      f.lifetime.abort();
+    }
+  } finally {
+    globalThis.window = previous;
+  }
+});
+
 test('late actions cannot run after stop and failed startup closes the adapter', async () => {
   let calls = 0;
   const f = fixture(async () => {

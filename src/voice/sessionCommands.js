@@ -12,6 +12,10 @@ export function createVoiceCommands({
   signal,
   debugSink,
   createControl = createVoiceControl,
+  // Optional `({ signal }) => Promise<boolean|null>`: false means the server
+  // has no voice provider configured, so voice shows as off instead of
+  // failing on first use. Null or absent keeps the mic as it is.
+  availability = null,
 }) {
   window.__gevVoiceCommands?.stop?.({ removeUi: true });
   const ui = createControl({ reset: true });
@@ -59,7 +63,25 @@ export function createVoiceCommands({
   const annotationUnsubscribe = annotations?.onOutlineEvent?.((event) => {
     session.sendMapEvent({ type: 'map_annotation_outline', ...event });
   });
+  let unconfigured = false;
+  const markUnconfigured = () => {
+    unconfigured = true;
+    ui.root.dataset.status = 'unconfigured';
+    ui.status.textContent = 'OFF';
+    ui.detail.textContent = 'VOICE OFF · NO OPENAI KEY';
+    ui.button.setAttribute('aria-disabled', 'true');
+    ui.button.setAttribute(
+      'aria-label',
+      'Voice control is off: add OPENAI_API_KEY to enable it',
+    );
+    if (ui.helpDetail)
+      ui.helpDetail.textContent =
+        'Voice is optional. Add OPENAI_API_KEY to enable it; everything else works without it.';
+    if (ui.tierButton) ui.tierButton.hidden = true;
+    if (ui.costValue) ui.costValue.hidden = true;
+  };
   const buttonHandler = () => {
+    if (unconfigured) return;
     if (adapter.ignoreButtonClick?.()) return;
     if (session.isActive()) session.stop();
     else void session.start({ pushToTalk: false });
@@ -80,6 +102,17 @@ export function createVoiceCommands({
     annotationUnsubscribe?.();
     updateStatus();
     ui.root.remove();
+  } else if (availability) {
+    // Bind shortcuts only once voice is known to be possible, so a keyless
+    // app never arms push-to-talk on Space.
+    void Promise.resolve()
+      .then(() => availability({ signal: session.signal }))
+      .catch(() => null)
+      .then((configured) => {
+        if (session.disposed || session.signal.aborted) return;
+        if (configured === false && !session.isActive()) markUnconfigured();
+        else adapter.bindControls?.();
+      });
   } else adapter.bindControls?.();
   window.__gevVoiceCommands = controls;
   return controls;

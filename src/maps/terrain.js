@@ -47,12 +47,33 @@ export function createKeylessTerrainResource(
   });
 }
 
-export async function createKeylessTerrain() {
+/**
+ * How long startup waits for Re:Earth's layer.json. The globe activation
+ * awaits terrain, so a hung upstream would otherwise hold the loading screen;
+ * past this the keyless globe draws on the flat ellipsoid instead.
+ */
+export const KEYLESS_TERRAIN_TIMEOUT_MS = 4000;
+
+export async function createKeylessTerrain({
+  timeoutMs = KEYLESS_TERRAIN_TIMEOUT_MS,
+  fromUrl = (resource) => Cesium.CesiumTerrainProvider.fromUrl(resource),
+} = {}) {
+  let timer;
   try {
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(`Re:Earth terrain did not answer in ${timeoutMs} ms`),
+          ),
+        timeoutMs,
+      );
+    });
     return {
-      provider: await Cesium.CesiumTerrainProvider.fromUrl(
-        createKeylessTerrainResource(),
-      ),
+      provider: await Promise.race([
+        fromUrl(createKeylessTerrainResource()),
+        timeout,
+      ]),
     };
   } catch (error) {
     console.warn(
@@ -60,5 +81,7 @@ export async function createKeylessTerrain() {
       error,
     );
     return { provider: new Cesium.EllipsoidTerrainProvider() };
+  } finally {
+    clearTimeout(timer);
   }
 }

@@ -176,7 +176,7 @@ export function buildCapabilitySummary(
         : 'Esri World Imagery (keyless satellite basemap) with keyless terrain',
     flights,
     voice: configured('OPENAI_API_KEY') ? 'available' : 'off until an OpenAI key is added',
-    vessels: configured('AISSTREAM_API_KEY') ? 'live AISStream feed' : 'off until an AISStream key is added',
+    vessels: configured('AISSTREAM_API_KEY') ? 'live AISStream feed, worldwide' : 'keyless Open Waters AIS around your view (AISStream key for worldwide)',
     fires: configured('FIRMS_MAP_KEY') ? 'live NASA FIRMS feed' : 'off until a FIRMS key is added',
     traffic: configured('TOMTOM_API_KEY') ? 'live TomTom flow' : 'built-in traffic simulation',
     missions: configured('LL2_API_TOKEN')

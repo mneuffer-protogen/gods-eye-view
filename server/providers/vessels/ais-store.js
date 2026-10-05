@@ -151,6 +151,30 @@ function appendAisTrackSample(mmsi, lat, lon, epochSec) {
   writeAisTrackSample(track, lat, lon, epochSec);
 }
 
+/**
+ * Feed snapshot rows (the keyless Open Waters path) into the same per-MMSI
+ * track buffers AISStream fills, so /api/vessels/track keeps working. That
+ * path never runs the AISStream prune, so the buffers are bounded here,
+ * oldest-inserted first.
+ * @param {Array<{mmsi:string,lat:number,lon:number,last_position_epoch:number}>} rows
+ */
+export function rememberAisTrackRows(rows) {
+  for (const row of rows) {
+    if (!row?.mmsi || !Number.isFinite(row.lat) || !Number.isFinite(row.lon))
+      continue;
+    const epochSec = Number.isFinite(row.last_position_epoch)
+      ? row.last_position_epoch
+      : Math.floor(Date.now() / 1000);
+    appendAisTrackSample(String(row.mmsi), row.lat, row.lon, epochSec);
+  }
+  for (const map of [_aisStreamTracks, _aisStreamTrackPending]) {
+    for (const mmsi of map.keys()) {
+      if (map.size <= AISSTREAM_CACHE_MAX) break;
+      map.delete(mmsi);
+    }
+  }
+}
+
 function writeAisTrackSample(track, lat, lon, epochSec) {
   track.lats[track.head] = lat;
   track.lons[track.head] = lon;

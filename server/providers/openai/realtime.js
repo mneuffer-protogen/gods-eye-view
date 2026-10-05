@@ -14,6 +14,31 @@ import {
 import { realtimeInstructions } from './instructions.js';
 import { GEV_REALTIME_TOOLS } from './tools.js';
 
+/**
+ * Whether voice can start, without minting anything: `{ configured }`. The
+ * mic reads this at startup so a keyless app shows voice as off rather than
+ * failing on the first click. Never reveals the key itself.
+ */
+function createRealtimeStatusHandler({
+  resolveApiKey = () => process.env.OPENAI_API_KEY,
+} = {}) {
+  return (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end(JSON.stringify({ error: 'Method not allowed' }));
+      return;
+    }
+    res.statusCode = 200;
+    res.end(
+      JSON.stringify({
+        configured: Boolean(String(resolveApiKey() || '').trim()),
+      }),
+    );
+  };
+}
+
 function createRealtimeTokenHandler({
   annotationGuidance,
   endpoint = 'https://api.openai.com/v1/realtime/client_secrets',
@@ -168,4 +193,4 @@ function createRealtimeTokenHandler({
   };
 }
 
-export { createRealtimeTokenHandler };
+export { createRealtimeTokenHandler, createRealtimeStatusHandler };

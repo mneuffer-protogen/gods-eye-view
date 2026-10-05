@@ -59,8 +59,9 @@ export async function createApplicationScene({
   defer(installTrackpadPinchZoom(viewer));
   registerDataCredits(viewer, credits);
   configureCreditKeyboardAccess(document);
+  // Server tokens are only a possibility until asked; keyless is the default.
   loaderStatus.textContent =
-    googleApiKey || googleTokens || cesiumToken
+    googleApiKey || cesiumToken
       ? 'Loading Google 3D Tiles...'
       : 'Loading the keyless globe...';
   const photoreal = await loadPhotorealisticTileset(Cesium, {
