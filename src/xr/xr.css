@@ -106,6 +106,24 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 0 24px rgba(0, 212, 255, 0.4);
 }
+#toggle-view {
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 11px 16px;
+  font: 700 12px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+#toggle-view:hover {
+  box-shadow: 0 0 18px rgba(0, 212, 255, 0.3);
+}
+#toggle-view[aria-pressed='true'] {
+  background: rgba(0, 212, 255, 0.14);
+}
 #enter-xr:disabled {
   background: transparent;
   color: var(--text-secondary);

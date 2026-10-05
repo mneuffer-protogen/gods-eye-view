@@ -22,6 +22,9 @@
         <p class="xr-eyebrow">Mixed reality</p>
         <h1>The live globe, on your table</h1>
       </div>
+      <button id="toggle-view" type="button" aria-pressed="false">
+        Tabletop map
+      </button>
       <button id="enter-xr" type="button" disabled>Checking headset…</button>
     </header>
     <aside class="xr-side" aria-label="Globe controls">
@@ -57,15 +60,23 @@
             <b>Place</b> in passthrough, look at a table and pinch to set the
             globe on it.
           </li>
+          <li>
+            <b>Tabletop map</b> switch from the console or the button above: the
+            map opens on the part of the globe facing you, or on the selected
+            contact. Pinch to pan, two hands to zoom and turn.
+          </li>
         </ul>
       </section>
       <p class="xr-credits">
         Imagery: <span id="xr-imagery-credit">loading…</span><br />
-        Data: OpenSky Network, adsb.lol, AISStream, CelesTrak, USGS
+        Map: Esri, Maxar, Earthstar Geographics · terrain Mapzen, AWS<br />
+        Data: OpenSky Network, adsb.lol, Open Waters AIS, AISStream, CelesTrak,
+        USGS
       </p>
     </aside>
     <footer class="xr-footer">
-      Preview: drag to orbit · scroll to zoom · click a contact
+      Preview: drag to orbit · scroll to zoom · click a contact · on the map,
+      drag to pan and scroll to zoom
     </footer>
     <div id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/src/xr/main.js"></script>

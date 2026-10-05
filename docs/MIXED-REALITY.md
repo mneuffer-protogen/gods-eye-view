@@ -79,6 +79,40 @@ WebXR needs a secure context. `localhost` is one, and a LAN address over plain H
   `/webxr-profiles/` in development and copied into the build
   (`server/standalone/xr-profiles.js`), so a deployed page does not depend on a CDN.
 
+## The tabletop map
+
+**Tabletop map** (on the console, and in the page header) turns the globe into a round map on the
+same table: the globe sinks into its base as the map rises. The map opens on the selected
+contact, or else on the part of the globe facing you, about 250 km across; **Globe view** turns
+the globe back to face where the map was.
+
+- The map is satellite imagery (Esri World Imagery) draped on elevation (the AWS Open Data
+  terrain tiles), both keyless, cut to a 0.8 m circle in a glass rim and shown as a slice of
+  land with an earth wall. Relief is true up close and exaggerated as the view widens.
+- A compass ring round the map turns with it; the rim carries the data credits on the near side
+  and the centre and width of the view on the far side.
+- Aircraft stand at their altitude over the ground, exaggerated to read at arm's length, each
+  with a drop line to the ground; ships sit on the water; earthquakes are rings on the ground.
+  Satellites stay on the globe.
+- Pinch the map (or aim a ray at it) and drag to pan; two hands zoom and turn it, from about
+  500 m to 2,000 km across. The rim still carries the table. In the desktop preview, drag the
+  map to pan it and scroll over it to zoom.
+- The aircraft and vessel feeds follow the map: after a pan or a zoom out they are asked again
+  around the new centre and width.
+
+Built in `src/xr/`: `tabletopView.js` (the view), `mapTable.js` (rim, compass, clipping),
+`mapTerrain.js` (tiles), `mapContacts.js`, `mapView.js` (pan and zoom maths), `mapGeo.js`,
+`circleClip.js` and `viewSwitch.js`.
+
+## Sharp panels
+
+In a headset whose browser offers WebXR Layers (Quest Browser does), each in-scene panel is
+composited as its own quad layer, which the headset samples once at display resolution, so
+panel text stays crisp instead of being resampled through the eye buffer. The panel still draws
+in the scene as a hole at its place in the depth order, so a hand or the globe in front of it
+still covers it. Without layer support, or with **Sharp panels** off in Settings for
+comparison, panels draw as before. See `src/xr/sharpLayer.js` and `src/xr/quadLayers.js`.
+
 ## On-device acceptance (awaiting hardware verification)
 
 Unit tests and the build cover the solvers, feeds, panel content, build wiring and asset serving.
@@ -102,6 +136,15 @@ Quest 3 / 3S, Quest Browser, passthrough:
 8. Frame timing holds the session rate with every feed on (about 10,000 aircraft and 800
    satellites). If it does not, render quality steps down with a notice.
 9. Room geometry, where the room has been scanned: a real wall hides the panels behind it.
+10. **Tabletop map** from the console: the globe sinks and the map rises on the same table,
+    centred on what faced you. One hand pans with the ground staying under the fingers; two
+    hands zoom and turn; the rim still carries it. Pan far and the map recentres without a jump
+    in what you see. **Globe view** returns with that place facing you.
+11. On the map: aircraft stand on drop lines, ships sit on the water, nothing spills past the
+    rim, and a quick pinch on a contact opens its panel.
+12. **Sharp panels**: panel text is visibly crisper with the setting on than off. A hand in
+    front of a panel covers it; the pointer ray draws over it. Opening Settings, a contact and
+    the console together keeps all three sharp.
 
 Vision Pro (VR when AR is unavailable): gaze and pinch turns the globe and selects along the
 gaze ray. Direct pinch on the globe turns it, with and without hand-tracking permission.

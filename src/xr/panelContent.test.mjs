@@ -64,6 +64,7 @@ test('the console lists every feed with its state and a toggle', () => {
     'feed:aircraft',
     'feed:vessels',
     'feed:earthquakes',
+    'view',
     'face-home',
     'place',
     'settings',
@@ -78,7 +79,18 @@ test('the console lists every feed with its state and a toggle', () => {
 
 test('the desktop console offers neither placement nor exit', () => {
   const ids = consoleContent({ feeds: [] }).actions.map((action) => action.id);
-  assert.deepEqual(ids, ['face-home', 'settings']);
+  assert.deepEqual(ids, ['view', 'face-home', 'settings']);
+});
+
+test('the console switches between the globe and the tabletop map', () => {
+  const globe = consoleContent({ feeds: [] });
+  const map = consoleContent({ feeds: [], view: 'tabletop' });
+  const label = (content, id) =>
+    content.actions.find((action) => action.id === id).label;
+  assert.equal(label(globe, 'view'), 'Tabletop map');
+  assert.equal(label(map, 'view'), 'Globe view');
+  assert.equal(label(map, 'face-home'), 'Map start location');
+  assert.equal(map.eyebrow, 'LIVE · TABLETOP MAP');
 });
 
 test('a contact panel names the kind, the position and the details', () => {
